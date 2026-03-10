@@ -54,6 +54,7 @@ async function processBatch<T, R>(
 export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Promise<void> {
   const now = Date.now();
   const currentYear = new Date().getFullYear().toString();
+  console.info('sync.start', { spotifyId, syncType });
 
   await putSyncStatus(spotifyId, {
     status: 'running',
@@ -66,8 +67,13 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
   await updateSyncStatus(spotifyId, 'running');
 
   try {
+    console.info('sync.auth.fetchToken.start', { spotifyId, syncType });
     const accessToken = await getValidAccessToken(spotifyId);
+    console.info('sync.auth.fetchToken.done', { spotifyId, syncType });
+
+    console.info('sync.followedArtists.start', { spotifyId, syncType });
     const artists = await getFollowedArtists(accessToken);
+    console.info('sync.followedArtists.done', { spotifyId, syncType, artistCount: artists.length });
 
     await putSyncStatus(spotifyId, {
       status: 'running',
@@ -86,6 +92,14 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
     let processedCount = 0;
 
     await processBatch(artists, CONCURRENCY, async (artist) => {
+      console.info('sync.artist.start', {
+        spotifyId,
+        syncType,
+        artistId: artist.id,
+        artistName: artist.name,
+        processedArtists: processedCount,
+        totalArtists: artists.length,
+      });
       const genres = artist.genres ?? [];
       for (const g of genres) {
         allGenres.add(g);
@@ -96,8 +110,23 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
 
       if (!releases) {
         // Fetch fresh from Spotify
+        console.info('sync.artist.albums.fetch.start', {
+          spotifyId,
+          syncType,
+          artistId: artist.id,
+        });
         const freshToken = await getValidAccessToken(spotifyId);
-        const albums = await getArtistAlbums(freshToken, artist.id);
+        const albums = await getArtistAlbums(
+          freshToken,
+          artist.id,
+          syncType === 'quick' ? { stopAfterYear: currentYear } : {},
+        );
+        console.info('sync.artist.albums.fetch.done', {
+          spotifyId,
+          syncType,
+          artistId: artist.id,
+          albumCount: albums.length,
+        });
         releases = albums.map((a) => albumToRelease(a, artist.id, artist.name, genres));
 
         // Write to shared artist cache
@@ -134,6 +163,13 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
         startedAt: now,
         updatedAt: Date.now(),
       });
+      console.info('sync.artist.done', {
+        spotifyId,
+        syncType,
+        artistId: artist.id,
+        processedArtists: processedCount,
+        totalArtists: artists.length,
+      });
     });
 
     // Years index: for quick sync merge into existing; for full sync rebuild
@@ -162,8 +198,10 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
     const syncOpts =
       syncType === 'quick' ? { lastQuickSyncAt: syncTimestamp } : { lastFullSyncAt: syncTimestamp };
     await updateSyncStatus(spotifyId, 'done', syncOpts);
+    console.info('sync.done', { spotifyId, syncType, artistCount: artists.length });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('sync.error', { spotifyId, syncType, message, err });
     await putSyncStatus(spotifyId, {
       status: 'error',
       syncType,

@@ -20,6 +20,7 @@ import { getFollowedArtists, getArtistAlbums } from '../spotifyClient.js';
 describe('spotifyClient', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
   });
 
   describe('getFollowedArtists', () => {
@@ -81,6 +82,100 @@ describe('spotifyClient', () => {
       expect(result).toHaveLength(2);
       expect(gotGetMock).toHaveBeenCalledTimes(2);
       expect(gotGetMock.mock.calls[1]![0]).toContain('after=cursor1');
+    });
+
+    it('throws when followed artist pagination repeats a cursor', async () => {
+      gotGetMock
+        .mockReturnValueOnce({
+          json: vi.fn().mockResolvedValue({
+            artists: {
+              items: [{ id: 'a1', name: 'Artist 1', genres: ['rock'] }],
+              next: 'https://next',
+              cursors: { after: 'cursor1' },
+              total: 2,
+            },
+          }),
+        })
+        .mockReturnValueOnce({
+          json: vi.fn().mockResolvedValue({
+            artists: {
+              items: [{ id: 'a2', name: 'Artist 2', genres: ['pop'] }],
+              next: 'https://next-again',
+              cursors: { after: 'cursor2' },
+              total: 3,
+            },
+          }),
+        })
+        .mockReturnValueOnce({
+          json: vi.fn().mockResolvedValue({
+            artists: {
+              items: [{ id: 'a3', name: 'Artist 3', genres: ['jazz'] }],
+              next: 'https://next-third',
+              cursors: { after: 'cursor1' },
+              total: 3,
+            },
+          }),
+        });
+
+      await expect(getFollowedArtists('token123')).rejects.toThrow(
+        'Spotify followed artists pagination repeated a cursor',
+      );
+    });
+
+    it('throws when followed artist pagination does not advance', async () => {
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue({
+          artists: {
+            items: [{ id: 'a1', name: 'Artist 1', genres: ['rock'] }],
+            next: 'https://next',
+            cursors: { after: 'cursor0' },
+            total: 2,
+          },
+        }),
+      });
+
+      await expect(getFollowedArtists('token123')).rejects.toThrow(
+        'Spotify followed artists pagination did not advance',
+      );
+    });
+
+    it('throws when followed artist pagination returns an empty page before completion', async () => {
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue({
+          artists: {
+            items: [],
+            next: 'https://next',
+            cursors: { after: 'cursor1' },
+            total: 2,
+          },
+        }),
+      });
+
+      await expect(getFollowedArtists('token123')).rejects.toThrow(
+        'Spotify followed artists pagination returned an empty page before completion',
+      );
+    });
+
+    it('throws when followed artist pagination exceeds the page limit', async () => {
+      let cursor = 0;
+      gotGetMock.mockImplementation(() => {
+        cursor++;
+        return {
+          json: vi.fn().mockResolvedValue({
+            artists: {
+              items: [{ id: 'a1', name: 'Artist 1', genres: ['rock'] }],
+              next: 'https://next',
+              cursors: { after: `cursor-${cursor}` },
+              total: 10001,
+            },
+          }),
+        };
+      });
+
+      await expect(getFollowedArtists('token123')).rejects.toThrow(
+        'Spotify followed artists pagination exceeded expected page limit',
+      );
+      expect(gotGetMock).toHaveBeenCalledTimes(200);
     });
 
     it('throws TooManyRequestsError on 429', async () => {
@@ -198,6 +293,92 @@ describe('spotifyClient', () => {
       expect(result).toHaveLength(2);
       expect(gotGetMock).toHaveBeenCalledTimes(2);
       expect(gotGetMock.mock.calls[1]![0]).toContain('offset=50');
+    });
+
+    it('stops paginating once pages are older than the quick sync cutoff year', async () => {
+      gotGetMock
+        .mockReturnValueOnce({
+          json: vi.fn().mockResolvedValue({
+            items: [
+              {
+                id: 'alb1',
+                name: 'Album 1',
+                album_type: 'album',
+                release_date: '2026-01-15',
+                images: [],
+                external_urls: { spotify: 'https://spotify.com/alb1' },
+                artists: [{ id: 'a1', name: 'A' }],
+              },
+            ],
+            next: 'https://next-page',
+            total: 2,
+          }),
+        })
+        .mockReturnValueOnce({
+          json: vi.fn().mockResolvedValue({
+            items: [
+              {
+                id: 'alb2',
+                name: 'Album 2',
+                album_type: 'album',
+                release_date: '2025-06-01',
+                images: [],
+                external_urls: { spotify: 'https://spotify.com/alb2' },
+                artists: [{ id: 'a1', name: 'A' }],
+              },
+            ],
+            next: 'https://ignored-page',
+            total: 3,
+          }),
+        });
+
+      const result = await getArtistAlbums('token', 'a1', { stopAfterYear: '2026' });
+
+      expect(result).toHaveLength(2);
+      expect(gotGetMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('continues paginating when no cutoff year is provided', async () => {
+      gotGetMock
+        .mockReturnValueOnce({
+          json: vi.fn().mockResolvedValue({
+            items: [
+              {
+                id: 'alb1',
+                name: 'Album 1',
+                album_type: 'album',
+                release_date: '2024-01-15',
+                images: [],
+                external_urls: { spotify: 'https://spotify.com/alb1' },
+                artists: [{ id: 'a1', name: 'A' }],
+              },
+            ],
+            next: 'https://next-page',
+            total: 2,
+          }),
+        })
+        .mockReturnValueOnce({
+          json: vi.fn().mockResolvedValue({
+            items: [
+              {
+                id: 'alb2',
+                name: 'Album 2',
+                album_type: 'album',
+                release_date: '2023-06-01',
+                images: [],
+                external_urls: { spotify: 'https://spotify.com/alb2' },
+                artists: [{ id: 'a1', name: 'A' }],
+              },
+            ],
+            next: null,
+            total: 2,
+          }),
+        });
+
+      const result = await getArtistAlbums('token', 'a1');
+
+      expect(result).toHaveLength(2);
+      expect(gotGetMock).toHaveBeenCalledTimes(2);
     });
 
     it('throws TooManyRequestsError on 429 with default retry-after', async () => {

@@ -20,7 +20,10 @@ export function SyncProgress() {
     }
   }, []);
 
-  const { data: status } = useQuery({
+  const {
+    data: status,
+    error: statusError,
+  } = useQuery({
     queryKey: ['sync', 'status'],
     queryFn: fetchSyncStatus,
     refetchInterval: (query) => {
@@ -29,18 +32,20 @@ export function SyncProgress() {
       return false;
     },
   });
-
   useEffect(() => {
     if (status?.status === 'running') {
       wasRunningRef.current = true;
       if (justTriggeredRef.current) {
         clearJustTriggered();
       }
+    } else if (statusError) {
+      wasRunningRef.current = false;
+      clearJustTriggered();
     } else if (wasRunningRef.current && (status?.status === 'done' || status?.status === 'idle')) {
       wasRunningRef.current = false;
       void queryClient.invalidateQueries({ queryKey: ['releases'] });
     }
-  }, [status?.status, queryClient, clearJustTriggered]);
+  }, [status?.status, statusError, queryClient, clearJustTriggered]);
 
   useEffect(() => {
     return () => {
@@ -64,7 +69,9 @@ export function SyncProgress() {
     }
   };
 
-  const isRunning = status?.status === 'running';
+  const statusErrorMessage =
+    statusError instanceof Error ? statusError.message : statusError ? 'Failed to fetch sync status' : null;
+  const isRunning = status?.status === 'running' && !statusErrorMessage;
   const progress =
     isRunning && status.totalArtists > 0
       ? Math.round((status.processedArtists / status.totalArtists) * 100)
@@ -119,6 +126,7 @@ export function SyncProgress() {
         )}
       </AnimatePresence>
       {syncError && <span className="text-xs text-red-400">{syncError}</span>}
+      {statusErrorMessage && <span className="text-xs text-red-400">{statusErrorMessage}</span>}
       {status?.status === 'error' && (
         <span className="text-xs text-red-400">
           Sync failed: {status.errorMessage ?? 'Unknown error'}
