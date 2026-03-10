@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
+import { getCookie } from 'hono/cookie';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
 const { sendMock } = vi.hoisted(() => {
   const sendMock = vi.fn();
@@ -55,9 +57,7 @@ function createApp() {
   const app = new Hono<HonoEnv>();
 
   app.use('/api/*', async (c, next) => {
-    const cookieHeader = c.req.header('cookie') ?? '';
-    const sessionMatch = cookieHeader.match(/__Host-session=([^;]+)/);
-    const spotifyId = sessionMatch?.[1];
+    const spotifyId = getCookie(c, '__Host-session');
     if (!spotifyId) return c.json({ error: 'Unauthorized' }, 401);
     c.set('spotifyId', spotifyId);
     return next();
@@ -68,7 +68,7 @@ function createApp() {
 
   app.onError((err, c) => {
     if (err instanceof AppError) {
-      return c.json({ error: err.message }, { status: err.statusCode });
+      return c.json({ error: err.message }, { status: err.statusCode as ContentfulStatusCode });
     }
     return c.json({ error: 'Internal' }, 500);
   });
@@ -116,7 +116,7 @@ describe('sync handlers', () => {
       });
 
       expect(res.status).toBe(429);
-      const body = await res.json();
+      const body = (await res.json()) as { error: string };
       expect(body.error).toContain('24 hours');
     });
 

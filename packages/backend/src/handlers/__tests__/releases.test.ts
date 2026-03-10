@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
+import { getCookie } from 'hono/cookie';
 
 const { sendMock } = vi.hoisted(() => {
   const sendMock = vi.fn();
@@ -29,9 +30,7 @@ function createApp() {
   const app = new Hono<HonoEnv>();
 
   app.use('/api/*', async (c, next) => {
-    const cookieHeader = c.req.header('cookie') ?? '';
-    const sessionMatch = cookieHeader.match(/__Host-session=([^;]+)/);
-    const spotifyId = sessionMatch?.[1];
+    const spotifyId = getCookie(c, '__Host-session');
     if (!spotifyId) return c.json({ error: 'Unauthorized' }, 401);
     c.set('spotifyId', spotifyId);
     return next();
@@ -74,9 +73,9 @@ describe('releases handlers', () => {
       });
 
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body = (await res.json()) as { items: { albumId: string }[]; nextCursor?: string };
       expect(body.items).toHaveLength(1);
-      expect(body.items[0].albumId).toBe('alb1');
+      expect(body.items[0]!.albumId).toBe('alb1');
       expect(body.nextCursor).toBeUndefined();
     });
 
@@ -129,12 +128,12 @@ describe('releases handlers', () => {
         headers: { cookie: '__Host-session=user1' },
       });
 
-      const body = await res.json();
+      const body = (await res.json()) as { nextCursor: string };
       expect(body.nextCursor).toBeTruthy();
       // Cursor should be base64url-encoded
       const decoded = JSON.parse(
         Buffer.from(body.nextCursor, 'base64url').toString('utf8'),
-      );
+      ) as Record<string, unknown>;
       expect(decoded).toEqual(lastKey);
     });
 
@@ -165,7 +164,7 @@ describe('releases handlers', () => {
       });
 
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body = (await res.json()) as { years: string[] };
       expect(body.years).toEqual(['2024', '2023', '2022']);
     });
 
@@ -178,7 +177,7 @@ describe('releases handlers', () => {
       });
 
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body = (await res.json()) as { years: string[] };
       expect(body.years).toEqual([]);
     });
   });

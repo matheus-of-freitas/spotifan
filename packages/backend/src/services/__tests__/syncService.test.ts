@@ -252,13 +252,13 @@ describe('syncService', () => {
     // 3. after artist 1 (1/2)
     // 4. after artist 2 (2/2)
     // 5. done (2/2)
-    const statusCalls = putSyncStatusMock.mock.calls.map(
-      (c: [string, { status: string; processedArtists: number; totalArtists: number }]) => ({
-        status: c[1].status,
-        processed: c[1].processedArtists,
-        total: c[1].totalArtists,
-      }),
-    );
+    const statusCalls = (
+      putSyncStatusMock.mock.calls as [string, { status: string; processedArtists: number; totalArtists: number }][]
+    ).map((c) => ({
+      status: c[1].status,
+      processed: c[1].processedArtists,
+      total: c[1].totalArtists,
+    }));
     expect(statusCalls[0]).toEqual({ status: 'running', processed: 0, total: 0 });
     expect(statusCalls[1]).toEqual({ status: 'running', processed: 0, total: 2 });
     // Due to concurrency batch (both run in same batch of 5), order may vary
