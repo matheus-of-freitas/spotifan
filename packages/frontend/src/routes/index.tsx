@@ -1,13 +1,36 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { useAuth } from '../hooks/useAuth';
+import { useEffect } from 'react';
 
 export const Route = createFileRoute('/')({
   component: HomePage,
 });
 
 function HomePage() {
+  const { user, isLoading, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      void navigate({ to: '/login' });
+    }
+  }, [isLoading, isAuthenticated, navigate]);
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-spotify-black">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-spotify-green border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!user) return null;
+
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <h1 className="text-4xl font-bold text-spotify-green">Spotifan</h1>
+    <div className="min-h-screen bg-spotify-black p-8">
+      <h1 className="text-3xl font-bold text-spotify-white">
+        Welcome, {user.displayName}
+      </h1>
     </div>
   );
 }
