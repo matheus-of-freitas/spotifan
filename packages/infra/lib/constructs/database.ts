@@ -13,7 +13,7 @@ export class DatabaseConstruct extends Construct {
       partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       timeToLiveAttribute: 'ttl',
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
