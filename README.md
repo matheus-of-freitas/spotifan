@@ -116,4 +116,4 @@ GitHub Actions runs on every push to `main` and on pull requests:
 
 ## License
 
-Private project — not published.
+MIT — see [LICENSE](LICENSE).

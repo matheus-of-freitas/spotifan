@@ -133,6 +133,51 @@ pnpm --filter @spotifan/infra deploy
 
 CDK performs incremental updates — only changed resources are modified.
 
+## GitHub Actions OIDC Setup (CD Pipeline)
+
+The CD pipeline uses OIDC to assume an IAM role without long-lived credentials.
+
+### 1. Create IAM OIDC Identity Provider
+
+In the AWS Console (IAM > Identity providers > Add provider):
+
+- **Provider type:** OpenID Connect
+- **Provider URL:** `https://token.actions.githubusercontent.com`
+- **Audience:** `sts.amazonaws.com`
+
+### 2. Create IAM Role
+
+Create a role with the following trust policy (replace `matheus-of-freitas/spotifan` with your repo):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:matheus-of-freitas/spotifan:ref:refs/heads/main"
+        }
+      }
+    }
+  ]
+}
+```
+
+Attach `AdministratorAccess` (or a narrower CDK deploy policy) to the role.
+
+### 3. Add GitHub Secret
+
+Store the role ARN as a GitHub repository secret named `AWS_DEPLOY_ROLE_ARN`.
+
 ## Stack Structure
 
 ```

@@ -72,3 +72,47 @@ jobs:
       - run: pnpm --filter @spotifan/frontend build
       - run: pnpm --filter @spotifan/infra build
       - run: cd packages/infra && npx cdk synth --no-staging
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [lint, backend, frontend, infra]
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Build all packages
+        run: |
+          pnpm --filter @spotifan/backend build
+          pnpm --filter @spotifan/frontend build
+          pnpm --filter @spotifan/infra build
+      - name: Deploy CDK stack
+        run: cd packages/infra && npx cdk deploy --require-approval never --outputs-file cdk-outputs.json
+      - name: Set repo homepage
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CF_URL=$(jq -r '.SpotifanStack.FrontendDistributionDomainName' packages/infra/cdk-outputs.json)
+          gh api "repos/${{ github.repository }}" -X PATCH -f homepage="https://${CF_URL}"
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v$(date +%Y%m%d)-$(git rev-parse --short HEAD)"
+          git tag "$TAG"
+          git push origin "$TAG"
+          gh release create "$TAG" --generate-notes

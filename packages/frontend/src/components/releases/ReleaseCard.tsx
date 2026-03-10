@@ -7,15 +7,32 @@ interface ReleaseCardProps {
 }
 
 export function ReleaseCard({ release, index }: ReleaseCardProps) {
+  const handleClick = () => {
+    window.location.href = `spotify:album:${release.albumId}`;
+    setTimeout(() => {
+      if (!document.hidden) {
+        window.open(release.spotifyUrl, '_blank', 'noopener,noreferrer');
+      }
+    }, 500);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleClick();
+    }
+  };
+
   return (
-    <motion.a
-      href={release.spotifyUrl}
-      target="_blank"
-      rel="noopener noreferrer"
+    <motion.div
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      role="link"
+      tabIndex={0}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: index * 0.03 }}
-      className="group block rounded-md bg-spotify-card-bg p-4 transition-colors hover:bg-spotify-gray-dark"
+      className="group block cursor-pointer rounded-md bg-spotify-card-bg p-4 transition-colors hover:bg-spotify-gray-dark"
     >
       <div className="mb-4 aspect-square overflow-hidden rounded-md">
         {release.imageUrl ? (
@@ -34,6 +51,6 @@ export function ReleaseCard({ release, index }: ReleaseCardProps) {
       <h3 className="truncate text-sm font-semibold text-spotify-white">{release.title}</h3>
       <p className="truncate text-xs text-spotify-gray-light">{release.artistName}</p>
       <p className="mt-1 text-xs text-spotify-gray-light">{release.releaseDate}</p>
-    </motion.a>
+    </motion.div>
   );
 }

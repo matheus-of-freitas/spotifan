@@ -16,7 +16,18 @@ export function Header() {
 
   return (
     <header className="flex items-center justify-between border-b border-spotify-gray-dark px-6 py-4">
-      <h1 className="text-xl font-bold text-spotify-green">Spotifan</h1>
+      <div className="flex items-center gap-2">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="#1DB954"
+          className="h-6 w-6"
+          aria-hidden="true"
+        >
+          <path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6Z" />
+        </svg>
+        <h1 className="text-xl font-bold text-spotify-green">Spotifan</h1>
+      </div>
       {user && (
         <div className="flex items-center gap-4">
           {user.imageUrl && (
