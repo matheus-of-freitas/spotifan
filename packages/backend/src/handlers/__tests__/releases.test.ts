@@ -149,6 +149,32 @@ describe('releases handlers', () => {
       const queryInput = sendMock.mock.calls[0]![0].input;
       expect(queryInput.ExclusiveStartKey).toEqual(startKey);
     });
+
+    it('passes valid startDate and endDate to query', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [], LastEvaluatedKey: undefined });
+
+      const app = createApp();
+      await app.request('/api/releases?startDate=2024-01-01&endDate=2024-06-30', {
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      const queryInput = sendMock.mock.calls[0]![0].input;
+      expect(queryInput.FilterExpression).toBe('releaseDate BETWEEN :startDate AND :endDate');
+      expect(queryInput.ExpressionAttributeValues[':startDate']).toBe('2024-01-01');
+      expect(queryInput.ExpressionAttributeValues[':endDate']).toBe('2024-06-30');
+    });
+
+    it('ignores invalid date format', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [], LastEvaluatedKey: undefined });
+
+      const app = createApp();
+      await app.request('/api/releases?startDate=not-a-date&endDate=2024-06-30', {
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      const queryInput = sendMock.mock.calls[0]![0].input;
+      expect(queryInput.FilterExpression).toBeUndefined();
+    });
   });
 
   describe('GET /api/releases/years', () => {

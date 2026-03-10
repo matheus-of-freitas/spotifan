@@ -259,6 +259,53 @@ describe('releases', () => {
       expect(result.items).toEqual([]);
       expect(result.nextCursor).toBeUndefined();
     });
+
+    it('filters by date range', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [] });
+
+      await queryUserReleases('user1', {
+        startDate: '2024-01-01',
+        endDate: '2024-06-30',
+      });
+
+      const cmd = sendMock.mock.calls[0]![0] as QueryCommand;
+      expect(cmd.input.FilterExpression).toBe('releaseDate BETWEEN :startDate AND :endDate');
+      expect(cmd.input.ExpressionAttributeValues![':startDate']).toBe('2024-01-01');
+      expect(cmd.input.ExpressionAttributeValues![':endDate']).toBe('2024-06-30');
+    });
+
+    it('combines date range with album type filter', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [] });
+
+      await queryUserReleases('user1', {
+        albumType: 'album',
+        startDate: '2024-01-01',
+        endDate: '2024-12-31',
+      });
+
+      const cmd = sendMock.mock.calls[0]![0] as QueryCommand;
+      expect(cmd.input.FilterExpression).toBe(
+        'albumType = :type AND releaseDate BETWEEN :startDate AND :endDate',
+      );
+    });
+
+    it('ignores date range when only startDate is provided', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [] });
+
+      await queryUserReleases('user1', { startDate: '2024-01-01' });
+
+      const cmd = sendMock.mock.calls[0]![0] as QueryCommand;
+      expect(cmd.input.FilterExpression).toBeUndefined();
+    });
+
+    it('ignores date range when only endDate is provided', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [] });
+
+      await queryUserReleases('user1', { endDate: '2024-12-31' });
+
+      const cmd = sendMock.mock.calls[0]![0] as QueryCommand;
+      expect(cmd.input.FilterExpression).toBeUndefined();
+    });
   });
 
   describe('getYearsIndex', () => {

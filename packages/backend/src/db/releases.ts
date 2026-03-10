@@ -114,6 +114,8 @@ export async function queryUserReleases(
   opts: {
     year?: string;
     albumType?: string;
+    startDate?: string;
+    endDate?: string;
     cursor?: string;
     limit?: number;
   },
@@ -121,16 +123,31 @@ export async function queryUserReleases(
   const limit = Math.min(opts.limit ?? 50, 100);
   const prefix = opts.year ? `RELEASE#${opts.year}` : 'RELEASE#';
 
+  const filterParts: string[] = [];
+  const exprValues: Record<string, unknown> = {
+    ':pk': `USER#${spotifyId}`,
+    ':prefix': prefix,
+  };
+
+  if (opts.albumType) {
+    filterParts.push('albumType = :type');
+    exprValues[':type'] = opts.albumType;
+  }
+
+  if (opts.startDate && opts.endDate) {
+    filterParts.push('releaseDate BETWEEN :startDate AND :endDate');
+    exprValues[':startDate'] = opts.startDate;
+    exprValues[':endDate'] = opts.endDate;
+  }
+
+  const filterExpression = filterParts.length > 0 ? filterParts.join(' AND ') : undefined;
+
   const result = await docClient.send(
     new QueryCommand({
       TableName: getTableName(),
       KeyConditionExpression: 'PK = :pk AND begins_with(SK, :prefix)',
-      ExpressionAttributeValues: {
-        ':pk': `USER#${spotifyId}`,
-        ':prefix': prefix,
-        ...(opts.albumType ? { ':type': opts.albumType } : {}),
-      },
-      ...(opts.albumType ? { FilterExpression: 'albumType = :type' } : {}),
+      ExpressionAttributeValues: exprValues,
+      ...(filterExpression ? { FilterExpression: filterExpression } : {}),
       ScanIndexForward: false,
       Limit: limit,
       ...(opts.cursor
