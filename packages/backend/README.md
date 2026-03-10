@@ -41,14 +41,14 @@ Config is loaded from AWS Secrets Manager (`spotifan/config`). Only `TABLE_NAME`
 
 ### Protected (requires `__Host-session` cookie)
 
-| Method | Path                  | Description                                         |
-| ------ | --------------------- | --------------------------------------------------- |
-| `POST` | `/api/auth/logout`    | Clear session                                       |
-| `GET`  | `/api/auth/me`        | Get current user info                               |
-| `POST` | `/api/sync?type=quick\|full` | Trigger album sync (default: quick)            |
-| `GET`  | `/api/sync/status`    | Get sync progress                                   |
-| `GET`  | `/api/releases`       | Get synced releases (paginated, filterable by year) |
-| `GET`  | `/api/releases/years` | Get available release years                         |
+| Method | Path                         | Description                                         |
+| ------ | ---------------------------- | --------------------------------------------------- |
+| `POST` | `/api/auth/logout`           | Clear session                                       |
+| `GET`  | `/api/auth/me`               | Get current user info                               |
+| `POST` | `/api/sync?type=quick\|full` | Trigger album sync (default: quick)                 |
+| `GET`  | `/api/sync/status`           | Get sync progress                                   |
+| `GET`  | `/api/releases`              | Get synced releases (paginated, filterable by year) |
+| `GET`  | `/api/releases/years`        | Get available release years                         |
 
 ## Architecture
 

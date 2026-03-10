@@ -31,8 +31,6 @@ describe('syncWorker', () => {
   it('propagates errors from runSync', async () => {
     runSyncMock.mockRejectedValue(new Error('Sync failed'));
 
-    await expect(handler({ spotifyId: 'user1', syncType: 'quick' })).rejects.toThrow(
-      'Sync failed',
-    );
+    await expect(handler({ spotifyId: 'user1', syncType: 'quick' })).rejects.toThrow('Sync failed');
   });
 });

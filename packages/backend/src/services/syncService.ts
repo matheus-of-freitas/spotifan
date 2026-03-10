@@ -44,10 +44,7 @@ async function processBatch<T, R>(
   return results;
 }
 
-export async function runSync(
-  spotifyId: string,
-  syncType: 'quick' | 'full',
-): Promise<void> {
+export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Promise<void> {
   const now = Date.now();
   const currentYear = new Date().getFullYear().toString();
 
@@ -98,9 +95,7 @@ export async function runSync(
 
       // For quick sync, filter to current year only
       const filtered =
-        syncType === 'quick'
-          ? releases.filter((r) => r.year === currentYear)
-          : releases;
+        syncType === 'quick' ? releases.filter((r) => r.year === currentYear) : releases;
 
       // Dedup: skip albums already seen or already persisted
       const uniqueReleases = filtered.filter((r) => {
@@ -149,9 +144,7 @@ export async function runSync(
 
     const syncTimestamp = Date.now();
     const syncOpts =
-      syncType === 'quick'
-        ? { lastQuickSyncAt: syncTimestamp }
-        : { lastFullSyncAt: syncTimestamp };
+      syncType === 'quick' ? { lastQuickSyncAt: syncTimestamp } : { lastFullSyncAt: syncTimestamp };
     await updateSyncStatus(spotifyId, 'done', syncOpts);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
