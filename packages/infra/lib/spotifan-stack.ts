@@ -22,8 +22,13 @@ export class SpotifanStack extends cdk.Stack {
       secret,
     });
 
-    new FrontendConstruct(this, 'Frontend', {
+    const frontend = new FrontendConstruct(this, 'Frontend', {
       httpApi: api.httpApi,
     });
+
+    api.apiHandler.addEnvironment(
+      'BASE_URL',
+      `https://${frontend.distribution.distributionDomainName}`,
+    );
   }
 }

@@ -57,6 +57,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^2.1.5
         version: 2.1.9(vitest@2.1.9(@types/node@22.19.15)(jsdom@25.0.1)(msw@2.12.10(@types/node@22.19.15)(typescript@5.9.3)))
+      esbuild:
+        specifier: ^0.27.3
+        version: 0.27.3
       msw:
         specifier: ^2.6.4
         version: 2.12.10(@types/node@22.19.15)(typescript@5.9.3)

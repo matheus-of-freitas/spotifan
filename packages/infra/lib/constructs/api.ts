@@ -13,13 +13,14 @@ interface ApiConstructProps {
 
 export class ApiConstruct extends Construct {
   public readonly httpApi: apigw.HttpApi;
+  public readonly apiHandler: lambda.Function;
 
   constructor(scope: Construct, id: string, props: ApiConstructProps) {
     super(scope, id);
 
     const syncWorker = new lambda.Function(this, 'SyncWorker', {
       runtime: lambda.Runtime.NODEJS_22_X,
-      handler: 'lambdas/syncWorker.handler',
+      handler: 'syncWorker.handler',
       code: lambda.Code.fromAsset('../backend/dist'),
       memorySize: 1024,
       timeout: cdk.Duration.minutes(15),
@@ -31,7 +32,7 @@ export class ApiConstruct extends Construct {
 
     const apiHandler = new lambda.Function(this, 'ApiHandler', {
       runtime: lambda.Runtime.NODEJS_22_X,
-      handler: 'lambdas/api.handler',
+      handler: 'api.handler',
       code: lambda.Code.fromAsset('../backend/dist'),
       memorySize: 256,
       timeout: cdk.Duration.seconds(30),
@@ -41,6 +42,8 @@ export class ApiConstruct extends Construct {
         SYNC_WORKER_FUNCTION_NAME: syncWorker.functionName,
       },
     });
+
+    this.apiHandler = apiHandler;
 
     props.table.grantReadWriteData(apiHandler);
     props.table.grantReadWriteData(syncWorker);

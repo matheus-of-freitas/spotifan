@@ -21,6 +21,8 @@ function getCookieConfig() {
 }
 
 function getRedirectUri(c: Context): string {
+  const baseUrl = process.env['BASE_URL'];
+  if (baseUrl) return `${baseUrl}/api/auth/callback`;
   const host = c.req.header('host') ?? 'localhost:3000';
   const proto = c.req.header('x-forwarded-proto') ?? 'http';
   return `${proto}://${host}/api/auth/callback`;

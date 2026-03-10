@@ -93,6 +93,20 @@ describe('auth handlers', () => {
       expect(location).toContain('code_challenge_method=S256');
       expect(location).toContain('user-follow-read');
     });
+
+    it('uses BASE_URL for redirect URI when set', async () => {
+      process.env['BASE_URL'] = 'https://example.cloudfront.net';
+      sendMock.mockResolvedValueOnce({}); // storePkceState
+
+      const app = createApp();
+      const res = await app.request('/api/auth/login');
+
+      const location = res.headers.get('location')!;
+      expect(location).toContain(
+        'redirect_uri=' + encodeURIComponent('https://example.cloudfront.net/api/auth/callback'),
+      );
+      delete process.env['BASE_URL'];
+    });
   });
 
   describe('GET /api/auth/callback', () => {
