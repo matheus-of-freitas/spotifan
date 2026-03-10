@@ -19,11 +19,13 @@ export async function fetchReleases(params: {
   year?: string;
   cursor?: string;
   limit?: number;
+  sort?: string;
 }): Promise<ReleasesPage> {
   const search = new URLSearchParams();
   if (params.year) search.set('year', params.year);
   if (params.cursor) search.set('cursor', params.cursor);
   if (params.limit) search.set('limit', String(params.limit));
+  if (params.sort) search.set('sort', params.sort);
 
   const res = await fetch(`/api/releases?${search}`);
   if (!res.ok) throw new Error('Failed to fetch releases');

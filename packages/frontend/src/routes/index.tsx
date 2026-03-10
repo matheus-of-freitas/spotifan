@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useEffect } from 'react';
 import { Header } from '../components/layout/Header';
 import { YearFilter } from '../components/releases/YearFilter';
+import { SortDropdown } from '../components/releases/SortDropdown';
 import { ReleaseGrid } from '../components/releases/ReleaseGrid';
 import { SyncProgress } from '../components/sync/SyncProgress';
 
@@ -35,7 +36,10 @@ function HomePage() {
       <Header />
       <main className="mx-auto max-w-7xl px-6 py-6">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <YearFilter />
+          <div className="flex items-center gap-3">
+            <YearFilter />
+            <SortDropdown />
+          </div>
           <SyncProgress />
         </div>
         <ReleaseGrid />
