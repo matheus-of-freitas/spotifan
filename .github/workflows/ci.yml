@@ -104,7 +104,7 @@ jobs:
         run: cd packages/infra && npx cdk deploy --require-approval never --outputs-file cdk-outputs.json
       - name: Set repo homepage
         # Requires a PAT with administration:write — GITHUB_TOKEN cannot update repo settings
-        if: secrets.GH_ADMIN_TOKEN != ''
+        if: ${{ secrets.GH_ADMIN_TOKEN != '' }}
         env:
           GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
         run: |
