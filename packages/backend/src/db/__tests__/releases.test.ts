@@ -25,6 +25,7 @@ import {
   batchWriteUserReleases,
   batchWriteArtistReleases,
   getArtistReleasesCached,
+  getUserExistingAlbumIds,
   queryUserReleases,
   getYearsIndex,
   putYearsIndex,
@@ -53,7 +54,7 @@ describe('releases', () => {
   });
 
   describe('batchWriteUserReleases', () => {
-    it('writes releases with correct PK/SK', async () => {
+    it('writes releases with correct PK/SK and no TTL', async () => {
       sendMock.mockResolvedValueOnce({});
       const releases = [makeRelease()];
 
@@ -65,7 +66,7 @@ describe('releases', () => {
       expect(items).toHaveLength(1);
       expect(items[0]!.PutRequest!.Item!['PK']).toBe('USER#user1');
       expect(items[0]!.PutRequest!.Item!['SK']).toBe('RELEASE#2024#2024-01-15#album1');
-      expect(items[0]!.PutRequest!.Item!['ttl']).toBeTypeOf('number');
+      expect(items[0]!.PutRequest!.Item!['ttl']).toBeUndefined();
     });
 
     it('chunks batches of more than 25 items', async () => {
@@ -129,6 +130,49 @@ describe('releases', () => {
       const result = await getArtistReleasesCached('artist1');
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('getUserExistingAlbumIds', () => {
+    it('returns album IDs from all pages', async () => {
+      sendMock
+        .mockResolvedValueOnce({
+          Items: [{ albumId: 'a1' }, { albumId: 'a2' }],
+          LastEvaluatedKey: { PK: 'USER#user1', SK: 'RELEASE#2024#2024-01-01#a2' },
+        })
+        .mockResolvedValueOnce({
+          Items: [{ albumId: 'a3' }],
+          LastEvaluatedKey: undefined,
+        });
+
+      const result = await getUserExistingAlbumIds('user1');
+
+      expect(result).toEqual(new Set(['a1', 'a2', 'a3']));
+      expect(sendMock).toHaveBeenCalledTimes(2);
+
+      const cmd = sendMock.mock.calls[0]![0] as QueryCommand;
+      expect(cmd.input.KeyConditionExpression).toBe('PK = :pk AND begins_with(SK, :prefix)');
+      expect(cmd.input.ExpressionAttributeValues).toEqual({
+        ':pk': 'USER#user1',
+        ':prefix': 'RELEASE#',
+      });
+      expect(cmd.input.ProjectionExpression).toBe('albumId');
+    });
+
+    it('returns empty set when no releases exist', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [], LastEvaluatedKey: undefined });
+
+      const result = await getUserExistingAlbumIds('user1');
+
+      expect(result).toEqual(new Set());
+    });
+
+    it('handles undefined Items', async () => {
+      sendMock.mockResolvedValueOnce({ Items: undefined, LastEvaluatedKey: undefined });
+
+      const result = await getUserExistingAlbumIds('user1');
+
+      expect(result).toEqual(new Set());
     });
   });
 

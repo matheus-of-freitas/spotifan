@@ -68,13 +68,20 @@ Sync fetches **albums only** (no singles, no compilations). The Spotify API call
 
 ### Deduplication
 
-Collab albums (same albumId under multiple artists) are deduplicated during sync using a `seenAlbumIds: Set<string>`. Each album appears once in the user's release list.
+Collab albums (same albumId under multiple artists) are deduplicated during sync using a `seenAlbumIds: Set<string>` initialized from already-persisted album IDs. Each album appears once in the user's release list and is never re-written.
 
-### Caching
+### Persistence & Caching
 
+- **User releases persist forever** (no TTL) — they are the source of truth
 - Artist releases cached in DynamoDB with 24h TTL (`ARTIST#{id}` namespace)
-- User can sync at most once per 24h (enforced via `lastSyncedAt` check)
 - Stale cache → re-fetch from Spotify; fresh cache → skip API call
+
+### Sync Types
+
+- **Quick sync** (daily cooldown, 24h): fetches only current-year albums, merges new years into existing years index
+- **Full sync** (weekly cooldown, 7 days): fetches all albums across all years, rebuilds years index from scratch
+- Both skip albums already persisted in the user's release list
+- Cooldowns tracked independently via `lastQuickSyncAt` / `lastFullSyncAt` on user metadata
 
 ### Auth
 

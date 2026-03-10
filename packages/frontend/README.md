@@ -59,7 +59,7 @@ server: {
 
 ### Sync
 
-- **SyncProgress** — Sync trigger button or progress bar with artist count and status (idle/running/done/error)
+- **SyncProgress** — Quick Sync / Full Sync buttons or progress bar with artist count and status (idle/running/done/error)
 
 ## State Management
 

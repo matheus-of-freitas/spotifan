@@ -26,10 +26,10 @@ export function SyncProgress() {
     }
   }, [status?.status, queryClient]);
 
-  const handleSync = async () => {
+  const handleSync = async (syncType: 'quick' | 'full') => {
     setSyncError(null);
     try {
-      await triggerSync();
+      await triggerSync(syncType);
       await queryClient.invalidateQueries({ queryKey: ['sync', 'status'] });
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : 'Sync failed');
@@ -66,17 +66,28 @@ export function SyncProgress() {
             </span>
           </motion.div>
         ) : (
-          <motion.button
-            key="button"
+          <motion.div
+            key="buttons"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => void handleSync()}
-            disabled={isRunning}
-            className="rounded-full bg-spotify-green px-4 py-2 text-sm font-semibold text-spotify-black transition-colors hover:bg-spotify-green-hover disabled:opacity-50"
+            className="flex items-center gap-2"
           >
-            Sync Library
-          </motion.button>
+            <button
+              onClick={() => void handleSync('quick')}
+              disabled={isRunning}
+              className="rounded-full bg-spotify-green px-4 py-2 text-sm font-semibold text-spotify-black transition-colors hover:bg-spotify-green-hover disabled:opacity-50"
+            >
+              Quick Sync
+            </button>
+            <button
+              onClick={() => void handleSync('full')}
+              disabled={isRunning}
+              className="rounded-full border border-spotify-green px-4 py-2 text-sm font-semibold text-spotify-green transition-colors hover:bg-spotify-green hover:text-spotify-black disabled:opacity-50"
+            >
+              Full Sync
+            </button>
+          </motion.div>
         )}
       </AnimatePresence>
       {syncError && <span className="text-xs text-red-400">{syncError}</span>}

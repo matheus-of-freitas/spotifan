@@ -39,7 +39,8 @@ const testUser: UserMetadata = {
   encryptedAccessToken: 'encrypted-access',
   tokenExpiresAt: Date.now() + 3600000,
   syncStatus: 'idle',
-  lastSyncedAt: undefined,
+  lastQuickSyncAt: undefined,
+  lastFullSyncAt: undefined,
 };
 
 describe('users', () => {
@@ -89,7 +90,7 @@ describe('users', () => {
   });
 
   describe('updateSyncStatus', () => {
-    it('updates sync status without lastSyncedAt', async () => {
+    it('updates sync status without timestamps', async () => {
       sendMock.mockResolvedValueOnce({});
 
       await updateSyncStatus('user123', 'running');
@@ -100,17 +101,48 @@ describe('users', () => {
       expect(cmd.input.ExpressionAttributeValues).toEqual({ ':s': 'running' });
     });
 
-    it('updates sync status with lastSyncedAt', async () => {
+    it('updates sync status with lastQuickSyncAt', async () => {
       sendMock.mockResolvedValueOnce({});
       const now = Date.now();
 
-      await updateSyncStatus('user123', 'done', now);
+      await updateSyncStatus('user123', 'done', { lastQuickSyncAt: now });
 
       const cmd = sendMock.mock.calls[0]![0] as UpdateCommand;
-      expect(cmd.input.UpdateExpression).toBe('SET syncStatus = :s, lastSyncedAt = :t');
+      expect(cmd.input.UpdateExpression).toBe('SET syncStatus = :s, lastQuickSyncAt = :tq');
       expect(cmd.input.ExpressionAttributeValues).toEqual({
         ':s': 'done',
-        ':t': now,
+        ':tq': now,
+      });
+    });
+
+    it('updates sync status with lastFullSyncAt', async () => {
+      sendMock.mockResolvedValueOnce({});
+      const now = Date.now();
+
+      await updateSyncStatus('user123', 'done', { lastFullSyncAt: now });
+
+      const cmd = sendMock.mock.calls[0]![0] as UpdateCommand;
+      expect(cmd.input.UpdateExpression).toBe('SET syncStatus = :s, lastFullSyncAt = :tf');
+      expect(cmd.input.ExpressionAttributeValues).toEqual({
+        ':s': 'done',
+        ':tf': now,
+      });
+    });
+
+    it('updates sync status with both timestamps', async () => {
+      sendMock.mockResolvedValueOnce({});
+      const now = Date.now();
+
+      await updateSyncStatus('user123', 'done', { lastQuickSyncAt: now, lastFullSyncAt: now });
+
+      const cmd = sendMock.mock.calls[0]![0] as UpdateCommand;
+      expect(cmd.input.UpdateExpression).toBe(
+        'SET syncStatus = :s, lastQuickSyncAt = :tq, lastFullSyncAt = :tf',
+      );
+      expect(cmd.input.ExpressionAttributeValues).toEqual({
+        ':s': 'done',
+        ':tq': now,
+        ':tf': now,
       });
     });
   });

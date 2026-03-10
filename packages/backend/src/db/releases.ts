@@ -23,7 +23,6 @@ export async function batchWriteUserReleases(
   releases: Release[],
 ): Promise<void> {
   const tableName = getTableName();
-  const ttl = Math.floor(Date.now() / 1000) + 86400; // +24h
 
   const chunks = chunk(releases, 25);
   for (const batch of chunks) {
@@ -35,7 +34,6 @@ export async function batchWriteUserReleases(
               Item: {
                 PK: `USER#${spotifyId}`,
                 SK: `RELEASE#${r.year}#${r.releaseDate}#${r.albumId}`,
-                ttl,
                 ...r,
               },
             },
@@ -44,6 +42,27 @@ export async function batchWriteUserReleases(
       }),
     );
   }
+}
+
+export async function getUserExistingAlbumIds(spotifyId: string): Promise<Set<string>> {
+  const albumIds = new Set<string>();
+  let lastKey: Record<string, unknown> | undefined;
+  do {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: getTableName(),
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :prefix)',
+        ExpressionAttributeValues: { ':pk': `USER#${spotifyId}`, ':prefix': 'RELEASE#' },
+        ProjectionExpression: 'albumId',
+        ExclusiveStartKey: lastKey,
+      }),
+    );
+    for (const item of result.Items ?? []) {
+      albumIds.add(item['albumId'] as string);
+    }
+    lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (lastKey);
+  return albumIds;
 }
 
 export async function batchWriteArtistReleases(releases: Release[]): Promise<void> {

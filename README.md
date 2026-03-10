@@ -2,7 +2,7 @@
 
 Spotify release tracker — never miss an album from the artists you follow.
 
-Spotifan syncs your followed artists from Spotify and builds a chronological feed of their album releases. Albums are cached for 24 hours, deduplicated across collaborations, and filterable by year.
+Spotifan syncs your followed artists from Spotify and builds a chronological feed of their album releases. Albums are persisted permanently, deduplicated across collaborations, and filterable by year. Two sync modes: **quick sync** (current year, daily) and **full sync** (all years, weekly).
 
 ## Architecture
 

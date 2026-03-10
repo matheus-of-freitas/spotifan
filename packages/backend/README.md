@@ -45,7 +45,7 @@ Config is loaded from AWS Secrets Manager (`spotifan/config`). Only `TABLE_NAME`
 | ------ | --------------------- | --------------------------------------------------- |
 | `POST` | `/api/auth/logout`    | Clear session                                       |
 | `GET`  | `/api/auth/me`        | Get current user info                               |
-| `POST` | `/api/sync`           | Trigger album sync                                  |
+| `POST` | `/api/sync?type=quick\|full` | Trigger album sync (default: quick)            |
 | `GET`  | `/api/sync/status`    | Get sync progress                                   |
 | `GET`  | `/api/releases`       | Get synced releases (paginated, filterable by year) |
 | `GET`  | `/api/releases/years` | Get available release years                         |
@@ -76,11 +76,14 @@ lib/              ── Config, crypto, errors, retry
 
 ### Sync Flow
 
-1. User triggers `/api/sync` — checks 24h cooldown via `lastSyncedAt`
+1. User triggers `/api/sync?type=quick|full` — checks independent cooldowns (`lastQuickSyncAt` for 24h, `lastFullSyncAt` for 7 days)
 2. Fetches followed artists from Spotify (paginated)
 3. For each artist, checks DynamoDB cache (24h TTL); cache miss → fetches from Spotify API (`include_groups=album`)
-4. Deduplicates collab albums using `seenAlbumIds: Set<string>`
-5. Writes releases to DynamoDB under the user's partition
+4. **Quick sync** filters to current-year albums only; **full sync** processes all years
+5. Skips albums already persisted in the user's releases (loaded via `getUserExistingAlbumIds`)
+6. Deduplicates collab albums using `seenAlbumIds: Set<string>`
+7. Writes new releases to DynamoDB under the user's partition (no TTL — persisted forever)
+8. **Quick sync** merges new years into existing years index; **full sync** rebuilds it from scratch
 
 ### DynamoDB Single-Table Design
 
@@ -97,7 +100,7 @@ lib/              ── Config, crypto, errors, retry
 
 - **Framework:** Vitest
 - **HTTP Mocking:** MSW v2
-- **Test count:** 119 tests across 15 test files
+- **Test count:** 139 tests across 15 test files
 - **Coverage thresholds:** 100% lines, functions, branches, and statements
 
 ```bash

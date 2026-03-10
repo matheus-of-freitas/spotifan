@@ -4,6 +4,8 @@ import {
   batchWriteUserReleases,
   batchWriteArtistReleases,
   getArtistReleasesCached,
+  getUserExistingAlbumIds,
+  getYearsIndex,
   putYearsIndex,
 } from '../db/releases.js';
 import { putSyncStatus } from '../db/sync.js';
@@ -42,11 +44,16 @@ async function processBatch<T, R>(
   return results;
 }
 
-export async function runSync(spotifyId: string): Promise<void> {
+export async function runSync(
+  spotifyId: string,
+  syncType: 'quick' | 'full',
+): Promise<void> {
   const now = Date.now();
+  const currentYear = new Date().getFullYear().toString();
 
   await putSyncStatus(spotifyId, {
     status: 'running',
+    syncType,
     totalArtists: 0,
     processedArtists: 0,
     startedAt: now,
@@ -60,13 +67,16 @@ export async function runSync(spotifyId: string): Promise<void> {
 
     await putSyncStatus(spotifyId, {
       status: 'running',
+      syncType,
       totalArtists: artists.length,
       processedArtists: 0,
       startedAt: now,
       updatedAt: Date.now(),
     });
 
-    const seenAlbumIds = new Set<string>();
+    // Load existing album IDs to skip already-persisted albums
+    const existingAlbumIds = await getUserExistingAlbumIds(spotifyId);
+    const seenAlbumIds = new Set<string>(existingAlbumIds);
     const allYears = new Set<string>();
     let processedCount = 0;
 
@@ -86,8 +96,14 @@ export async function runSync(spotifyId: string): Promise<void> {
         }
       }
 
-      // Dedup: skip albums already seen from another artist (collabs)
-      const uniqueReleases = releases.filter((r) => {
+      // For quick sync, filter to current year only
+      const filtered =
+        syncType === 'quick'
+          ? releases.filter((r) => r.year === currentYear)
+          : releases;
+
+      // Dedup: skip albums already seen or already persisted
+      const uniqueReleases = filtered.filter((r) => {
         if (seenAlbumIds.has(r.albumId)) return false;
         seenAlbumIds.add(r.albumId);
         return true;
@@ -104,6 +120,7 @@ export async function runSync(spotifyId: string): Promise<void> {
       processedCount++;
       await putSyncStatus(spotifyId, {
         status: 'running',
+        syncType,
         totalArtists: artists.length,
         processedArtists: processedCount,
         startedAt: now,
@@ -111,22 +128,36 @@ export async function runSync(spotifyId: string): Promise<void> {
       });
     });
 
-    // Write years index
+    // Years index: for quick sync merge into existing; for full sync rebuild
+    if (syncType === 'quick') {
+      const existingYears = await getYearsIndex(spotifyId);
+      for (const y of existingYears) {
+        allYears.add(y);
+      }
+    }
     const sortedYears = Array.from(allYears).sort().reverse();
     await putYearsIndex(spotifyId, sortedYears);
 
     await putSyncStatus(spotifyId, {
       status: 'done',
+      syncType,
       totalArtists: artists.length,
       processedArtists: artists.length,
       startedAt: now,
       updatedAt: Date.now(),
     });
-    await updateSyncStatus(spotifyId, 'done', Date.now());
+
+    const syncTimestamp = Date.now();
+    const syncOpts =
+      syncType === 'quick'
+        ? { lastQuickSyncAt: syncTimestamp }
+        : { lastFullSyncAt: syncTimestamp };
+    await updateSyncStatus(spotifyId, 'done', syncOpts);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     await putSyncStatus(spotifyId, {
       status: 'error',
+      syncType,
       totalArtists: 0,
       processedArtists: 0,
       errorMessage: message,

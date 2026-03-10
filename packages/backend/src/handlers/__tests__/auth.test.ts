@@ -278,7 +278,8 @@ describe('auth handlers', () => {
           Item: {
             spotifyId: 'user1',
             syncStatus: 'done',
-            lastSyncedAt: 1700000000000,
+            lastQuickSyncAt: 1700000000000,
+            lastFullSyncAt: 1699000000000,
           },
         }) // getUser
         .mockResolvedValueOnce({}); // putUser
@@ -313,7 +314,8 @@ describe('auth handlers', () => {
       // Verify putUser preserved sync status
       const putCall = sendMock.mock.calls[3]![0];
       expect(putCall.input.Item.syncStatus).toBe('done');
-      expect(putCall.input.Item.lastSyncedAt).toBe(1700000000000);
+      expect(putCall.input.Item.lastQuickSyncAt).toBe(1700000000000);
+      expect(putCall.input.Item.lastFullSyncAt).toBe(1699000000000);
       // imageUrl should be undefined when images is empty
       expect(putCall.input.Item.imageUrl).toBeUndefined();
     });
@@ -350,7 +352,8 @@ describe('auth handlers', () => {
           email: 'test@example.com',
           imageUrl: 'https://img.spotify.com/avatar.jpg',
           syncStatus: 'idle',
-          lastSyncedAt: 1700000000000,
+          lastQuickSyncAt: 1700000000000,
+          lastFullSyncAt: 1699000000000,
           encryptedRefreshToken: 'encrypted',
           encryptedAccessToken: 'encrypted',
           tokenExpiresAt: Date.now() + 3600000,
@@ -370,7 +373,8 @@ describe('auth handlers', () => {
         email: 'test@example.com',
         imageUrl: 'https://img.spotify.com/avatar.jpg',
         syncStatus: 'idle',
-        lastSyncedAt: 1700000000000,
+        lastQuickSyncAt: 1700000000000,
+        lastFullSyncAt: 1699000000000,
       });
     });
 

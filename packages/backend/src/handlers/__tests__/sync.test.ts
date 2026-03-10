@@ -99,12 +99,12 @@ describe('sync handlers', () => {
       expect(res.status).toBe(404);
     });
 
-    it('returns 429 when sync cooldown not elapsed', async () => {
+    it('returns 429 when quick sync cooldown not elapsed', async () => {
       sendMock.mockResolvedValueOnce({
         Item: {
           spotifyId: 'user1',
           syncStatus: 'done',
-          lastSyncedAt: Date.now() - 1000, // synced 1 second ago
+          lastQuickSyncAt: Date.now() - 1000, // synced 1 second ago
         },
       });
 
@@ -117,6 +117,28 @@ describe('sync handlers', () => {
       expect(res.status).toBe(429);
       const body = (await res.json()) as { error: string };
       expect(body.error).toContain('24 hours');
+      expect(body.error).toContain('quick');
+    });
+
+    it('returns 429 when full sync cooldown not elapsed', async () => {
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          spotifyId: 'user1',
+          syncStatus: 'done',
+          lastFullSyncAt: Date.now() - 1000, // synced 1 second ago
+        },
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/sync?type=full', {
+        method: 'POST',
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(429);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toContain('7 days');
+      expect(body.error).toContain('full');
     });
 
     it('returns 409 when sync already running', async () => {
@@ -124,7 +146,7 @@ describe('sync handlers', () => {
         Item: {
           spotifyId: 'user1',
           syncStatus: 'running',
-          lastSyncedAt: Date.now() - 100000000, // long ago
+          lastQuickSyncAt: Date.now() - 100000000, // long ago
         },
       });
 
@@ -137,7 +159,7 @@ describe('sync handlers', () => {
       expect(res.status).toBe(409);
     });
 
-    it('starts sync locally when no SYNC_WORKER_FUNCTION_NAME', async () => {
+    it('starts quick sync locally when no SYNC_WORKER_FUNCTION_NAME', async () => {
       runSyncMock.mockResolvedValue(undefined);
       sendMock.mockResolvedValueOnce({
         Item: {
@@ -155,10 +177,48 @@ describe('sync handlers', () => {
       expect(res.status).toBe(202);
       const body = await res.json();
       expect(body).toEqual({ ok: true });
-      expect(runSyncMock).toHaveBeenCalledWith('user1');
+      expect(runSyncMock).toHaveBeenCalledWith('user1', 'quick');
     });
 
-    it('invokes Lambda when SYNC_WORKER_FUNCTION_NAME is set', async () => {
+    it('starts full sync locally when type=full', async () => {
+      runSyncMock.mockResolvedValue(undefined);
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          spotifyId: 'user1',
+          syncStatus: 'idle',
+        },
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/sync?type=full', {
+        method: 'POST',
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(202);
+      expect(runSyncMock).toHaveBeenCalledWith('user1', 'full');
+    });
+
+    it('defaults to quick sync when type param is invalid', async () => {
+      runSyncMock.mockResolvedValue(undefined);
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          spotifyId: 'user1',
+          syncStatus: 'idle',
+        },
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/sync?type=invalid', {
+        method: 'POST',
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(202);
+      expect(runSyncMock).toHaveBeenCalledWith('user1', 'quick');
+    });
+
+    it('invokes Lambda with syncType when SYNC_WORKER_FUNCTION_NAME is set', async () => {
       process.env['SYNC_WORKER_FUNCTION_NAME'] = 'spotifan-sync-worker';
       lambdaSendMock.mockResolvedValue({});
       sendMock.mockResolvedValueOnce({
@@ -169,7 +229,7 @@ describe('sync handlers', () => {
       });
 
       const app = createApp();
-      const res = await app.request('/api/sync', {
+      const res = await app.request('/api/sync?type=full', {
         method: 'POST',
         headers: { cookie: '__Host-session=user1' },
       });
@@ -179,18 +239,37 @@ describe('sync handlers', () => {
       expect(runSyncMock).not.toHaveBeenCalled();
     });
 
-    it('allows sync when user has no lastSyncedAt', async () => {
+    it('allows quick sync when user has no lastQuickSyncAt', async () => {
       runSyncMock.mockResolvedValue(undefined);
       sendMock.mockResolvedValueOnce({
         Item: {
           spotifyId: 'user1',
           syncStatus: 'idle',
-          // no lastSyncedAt
+          // no lastQuickSyncAt
         },
       });
 
       const app = createApp();
       const res = await app.request('/api/sync', {
+        method: 'POST',
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(202);
+    });
+
+    it('allows full sync when user has no lastFullSyncAt', async () => {
+      runSyncMock.mockResolvedValue(undefined);
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          spotifyId: 'user1',
+          syncStatus: 'idle',
+          // no lastFullSyncAt
+        },
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/sync?type=full', {
         method: 'POST',
         headers: { cookie: '__Host-session=user1' },
       });
@@ -220,6 +299,26 @@ describe('sync handlers', () => {
       expect(consoleSpy).toHaveBeenCalled();
       consoleSpy.mockRestore();
     });
+
+    it('allows quick sync when only full sync cooldown is active', async () => {
+      runSyncMock.mockResolvedValue(undefined);
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          spotifyId: 'user1',
+          syncStatus: 'idle',
+          lastFullSyncAt: Date.now() - 1000, // full sync just happened
+          // no lastQuickSyncAt
+        },
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/sync', {
+        method: 'POST',
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(202);
+    });
   });
 
   describe('GET /api/sync/status', () => {
@@ -243,6 +342,7 @@ describe('sync handlers', () => {
     it('returns sync status when available', async () => {
       const syncStatus = {
         status: 'running',
+        syncType: 'quick',
         totalArtists: 100,
         processedArtists: 42,
         startedAt: 1700000000000,

@@ -88,7 +88,8 @@ export async function handleCallback(c: Context<HonoEnv>): Promise<Response> {
     encryptedAccessToken: encrypt(tokens.access_token, key),
     tokenExpiresAt: Date.now() + tokens.expires_in * 1000 - 60000,
     syncStatus: existing?.syncStatus ?? 'idle',
-    lastSyncedAt: existing?.lastSyncedAt,
+    lastQuickSyncAt: existing?.lastQuickSyncAt,
+    lastFullSyncAt: existing?.lastFullSyncAt,
   });
 
   const cookie = getCookieConfig();
@@ -117,6 +118,7 @@ export async function handleMe(c: Context<HonoEnv>): Promise<Response> {
     email: user.email,
     imageUrl: user.imageUrl,
     syncStatus: user.syncStatus,
-    lastSyncedAt: user.lastSyncedAt,
+    lastQuickSyncAt: user.lastQuickSyncAt,
+    lastFullSyncAt: user.lastFullSyncAt,
   });
 }

@@ -10,7 +10,8 @@ export interface UserMetadata {
   encryptedAccessToken: string;
   tokenExpiresAt: number;
   syncStatus: 'idle' | 'running' | 'done' | 'error';
-  lastSyncedAt?: number;
+  lastQuickSyncAt?: number;
+  lastFullSyncAt?: number;
 }
 
 export async function getUser(spotifyId: string): Promise<UserMetadata | null> {
@@ -39,14 +40,18 @@ export async function putUser(user: UserMetadata): Promise<void> {
 export async function updateSyncStatus(
   spotifyId: string,
   syncStatus: UserMetadata['syncStatus'],
-  lastSyncedAt?: number,
+  opts?: { lastQuickSyncAt?: number; lastFullSyncAt?: number },
 ): Promise<void> {
   const expressionParts = ['syncStatus = :s'];
   const values: Record<string, unknown> = { ':s': syncStatus };
 
-  if (lastSyncedAt !== undefined) {
-    expressionParts.push('lastSyncedAt = :t');
-    values[':t'] = lastSyncedAt;
+  if (opts?.lastQuickSyncAt !== undefined) {
+    expressionParts.push('lastQuickSyncAt = :tq');
+    values[':tq'] = opts.lastQuickSyncAt;
+  }
+  if (opts?.lastFullSyncAt !== undefined) {
+    expressionParts.push('lastFullSyncAt = :tf');
+    values[':tf'] = opts.lastFullSyncAt;
   }
 
   await docClient.send(

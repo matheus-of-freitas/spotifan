@@ -3,6 +3,7 @@ import { docClient, getTableName } from './client.js';
 
 export interface SyncStatus {
   status: 'running' | 'done' | 'error';
+  syncType: 'quick' | 'full';
   totalArtists: number;
   processedArtists: number;
   errorMessage?: string;

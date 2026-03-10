@@ -6,17 +6,25 @@ import { AppError } from '../lib/errors.js';
 import { runSync } from '../services/syncService.js';
 import type { HonoEnv } from '../lib/honoTypes.js';
 
-const SYNC_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
+const QUICK_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
+const FULL_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 export async function handleSync(c: Context<HonoEnv>): Promise<Response> {
   const spotifyId = c.get('spotifyId');
+  const syncType = c.req.query('type') === 'full' ? 'full' : 'quick';
 
   const user = await getUser(spotifyId);
   if (!user) throw new AppError(404, 'User not found');
 
   // Check cooldown
-  if (user.lastSyncedAt && Date.now() - user.lastSyncedAt < SYNC_COOLDOWN_MS) {
-    throw new AppError(429, 'Sync available once per 24 hours');
+  const lastSyncField = syncType === 'full' ? 'lastFullSyncAt' : 'lastQuickSyncAt';
+  const cooldown = syncType === 'full' ? FULL_COOLDOWN_MS : QUICK_COOLDOWN_MS;
+
+  if (user[lastSyncField] && Date.now() - user[lastSyncField] < cooldown) {
+    throw new AppError(
+      429,
+      `${syncType} sync available once per ${syncType === 'full' ? '7 days' : '24 hours'}`,
+    );
   }
 
   // Check if already running
@@ -33,12 +41,12 @@ export async function handleSync(c: Context<HonoEnv>): Promise<Response> {
       new InvokeCommand({
         FunctionName: workerFunctionName,
         InvocationType: 'Event',
-        Payload: Buffer.from(JSON.stringify({ spotifyId })),
+        Payload: Buffer.from(JSON.stringify({ spotifyId, syncType })),
       }),
     );
   } else {
     // Local: run sync in-process (non-blocking)
-    runSync(spotifyId).catch((err) => {
+    runSync(spotifyId, syncType).catch((err) => {
       console.error('Sync failed:', err);
     });
   }

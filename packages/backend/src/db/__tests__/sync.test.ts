@@ -25,6 +25,7 @@ import { putSyncStatus, getSyncStatus, type SyncStatus } from '../sync.js';
 
 const testStatus: SyncStatus = {
   status: 'running',
+  syncType: 'quick',
   totalArtists: 100,
   processedArtists: 25,
   startedAt: 1700000000000,
@@ -48,6 +49,7 @@ describe('sync', () => {
       expect(cmd.input.Item!['PK']).toBe('USER#user1');
       expect(cmd.input.Item!['SK']).toBe('SYNC#CURRENT');
       expect(cmd.input.Item!['status']).toBe('running');
+      expect(cmd.input.Item!['syncType']).toBe('quick');
       expect(cmd.input.Item!['totalArtists']).toBe(100);
       expect(cmd.input.Item!['processedArtists']).toBe(25);
       expect(cmd.input.Item!['ttl']).toBeTypeOf('number');
@@ -70,6 +72,16 @@ describe('sync', () => {
 
       const cmd = sendMock.mock.calls[0]![0] as PutCommand;
       expect(cmd.input.Item!['errorMessage']).toBe('Rate limited');
+    });
+
+    it('writes full sync type', async () => {
+      sendMock.mockResolvedValueOnce({});
+      const fullStatus: SyncStatus = { ...testStatus, syncType: 'full' };
+
+      await putSyncStatus('user1', fullStatus);
+
+      const cmd = sendMock.mock.calls[0]![0] as PutCommand;
+      expect(cmd.input.Item!['syncType']).toBe('full');
     });
   });
 

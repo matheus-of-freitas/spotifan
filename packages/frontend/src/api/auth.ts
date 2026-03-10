@@ -4,7 +4,8 @@ export interface User {
   email?: string;
   imageUrl?: string;
   syncStatus: string;
-  lastSyncedAt?: number;
+  lastQuickSyncAt?: number;
+  lastFullSyncAt?: number;
 }
 
 export async function fetchMe(): Promise<User> {
