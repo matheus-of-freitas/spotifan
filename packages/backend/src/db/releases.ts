@@ -91,7 +91,8 @@ export async function getArtistReleasesCached(
         ':prefix': 'RELEASE#',
         ':now': now,
       },
-      FilterExpression: 'ttl > :now',
+      FilterExpression: '#ttl > :now',
+      ExpressionAttributeNames: { '#ttl': 'ttl' },
     }),
   );
   if (!result.Items || result.Items.length === 0) return null;

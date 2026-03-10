@@ -122,7 +122,8 @@ describe('releases', () => {
       expect(cmd.input.KeyConditionExpression).toBe(
         'PK = :pk AND begins_with(SK, :prefix)',
       );
-      expect(cmd.input.FilterExpression).toBe('ttl > :now');
+      expect(cmd.input.FilterExpression).toBe('#ttl > :now');
+      expect(cmd.input.ExpressionAttributeNames).toEqual({ '#ttl': 'ttl' });
     });
 
     it('returns null when no items found', async () => {
