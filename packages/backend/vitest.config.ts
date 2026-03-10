@@ -7,8 +7,8 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     coverage: {
       provider: 'v8',
-      include: ['src/db/**/*.ts'],
-      exclude: ['src/**/*.test.ts'],
+      include: ['src/db/**/*.ts', 'src/lib/**/*.ts', 'src/services/**/*.ts', 'src/handlers/**/*.ts'],
+      exclude: ['src/**/*.test.ts', 'src/**/__tests__/**', 'src/lib/honoTypes.ts'],
       thresholds: {
         lines: 100,
         functions: 100,
