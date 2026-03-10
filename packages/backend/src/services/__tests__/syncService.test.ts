@@ -83,6 +83,8 @@ function makeAlbum(id: string, name: string, date: string, artistId: string, art
 describe('syncService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
     getValidAccessTokenMock.mockResolvedValue('access-token');
     putSyncStatusMock.mockResolvedValue(undefined);
     updateSyncStatusMock.mockResolvedValue(undefined);
@@ -343,6 +345,20 @@ describe('syncService', () => {
       });
     });
 
+    it('passes a current-year cutoff to artist album pagination', async () => {
+      getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockResolvedValue([
+        makeAlbum('alb1', 'Current Album', `${currentYear}-06-15`, 'a1', 'Artist 1'),
+      ]);
+
+      await runSync('user1', 'quick');
+
+      expect(getArtistAlbumsMock).toHaveBeenCalledWith('access-token', 'a1', {
+        stopAfterYear: currentYear,
+      });
+    });
+
     it('merges new years into existing years index', async () => {
       getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
       getArtistReleasesCachedMock.mockResolvedValue(null);
@@ -425,6 +441,18 @@ describe('syncService', () => {
       // Should NOT call getYearsIndex for full sync
       expect(getYearsIndexMock).not.toHaveBeenCalled();
       expect(putYearsIndexMock).toHaveBeenCalledWith('user1', ['2024']);
+    });
+
+    it('fetches artist albums without a quick sync cutoff', async () => {
+      getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockResolvedValue([
+        makeAlbum('alb1', 'Album', '2024-01-01', 'a1', 'Artist 1'),
+      ]);
+
+      await runSync('user1', 'full');
+
+      expect(getArtistAlbumsMock).toHaveBeenCalledWith('access-token', 'a1', {});
     });
   });
 });

@@ -3,6 +3,7 @@ import { withRetry } from '../lib/retry.js';
 import { AppError, TooManyRequestsError } from '../lib/errors.js';
 
 const REQUEST_TIMEOUT_MS = 30_000;
+const MAX_FOLLOWED_ARTIST_PAGES = 200;
 
 interface SpotifyArtist {
   id: string;
@@ -35,6 +36,10 @@ interface SpotifyAlbumsResponse {
   total: number;
 }
 
+interface ArtistAlbumOptions {
+  stopAfterYear?: string;
+}
+
 function handleSpotifyError(err: unknown): never {
   if (
     typeof err === 'object' &&
@@ -58,8 +63,15 @@ function handleSpotifyError(err: unknown): never {
 export async function getFollowedArtists(accessToken: string): Promise<SpotifyArtist[]> {
   const artists: SpotifyArtist[] = [];
   let after: string | undefined;
+  let pageCount = 0;
+  const seenCursors = new Set<string>();
 
   do {
+    pageCount++;
+    if (pageCount > MAX_FOLLOWED_ARTIST_PAGES) {
+      throw new Error('Spotify followed artists pagination exceeded expected page limit');
+    }
+
     const params = new URLSearchParams({ type: 'artist', limit: '50' });
     if (after) params.set('after', after);
 
@@ -76,8 +88,29 @@ export async function getFollowedArtists(accessToken: string): Promise<SpotifyAr
       }
     });
 
+    const nextAfter = page.artists.cursors.after ?? undefined;
+    console.info('spotify.followedArtists.page', {
+      page: pageCount,
+      itemCount: page.artists.items.length,
+      after,
+      nextAfter,
+    });
+
+    if (nextAfter && nextAfter === after) {
+      throw new Error('Spotify followed artists pagination did not advance');
+    }
+    if (nextAfter && seenCursors.has(nextAfter)) {
+      throw new Error('Spotify followed artists pagination repeated a cursor');
+    }
+    if (page.artists.next !== null && page.artists.items.length === 0) {
+      throw new Error('Spotify followed artists pagination returned an empty page before completion');
+    }
+
     artists.push(...page.artists.items);
-    after = page.artists.cursors.after ?? undefined;
+    if (nextAfter) {
+      seenCursors.add(nextAfter);
+    }
+    after = nextAfter;
   } while (after);
 
   return artists;
@@ -86,6 +119,7 @@ export async function getFollowedArtists(accessToken: string): Promise<SpotifyAr
 export async function getArtistAlbums(
   accessToken: string,
   artistId: string,
+  options: ArtistAlbumOptions = {},
 ): Promise<SpotifyAlbum[]> {
   const albums: SpotifyAlbum[] = [];
   let offset = 0;
@@ -114,7 +148,17 @@ export async function getArtistAlbums(
 
     albums.push(...page.items);
     offset += limit;
-    hasMore = page.next !== null;
+
+    if (!options.stopAfterYear) {
+      hasMore = page.next !== null;
+      continue;
+    }
+
+    const cutoffYear = options.stopAfterYear;
+    const hasAlbumsAtOrAboveCutoff = page.items.some(
+      (album) => album.release_date.slice(0, 4) >= cutoffYear,
+    );
+    hasMore = page.next !== null && hasAlbumsAtOrAboveCutoff;
   }
 
   return albums;
