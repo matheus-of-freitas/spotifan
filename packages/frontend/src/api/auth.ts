@@ -1,4 +1,11 @@
-import type { User } from '../store/authStore';
+export interface User {
+  spotifyId: string;
+  displayName: string;
+  email?: string;
+  imageUrl?: string;
+  syncStatus: string;
+  lastSyncedAt?: number;
+}
 
 export async function fetchMe(): Promise<User> {
   const res = await fetch('/api/auth/me');
