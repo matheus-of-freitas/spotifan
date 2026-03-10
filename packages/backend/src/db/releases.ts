@@ -150,6 +150,38 @@ export async function queryUserReleases(
   return { items, nextCursor };
 }
 
+export async function queryAllUserReleases(
+  spotifyId: string,
+  opts: { year?: string; albumType?: string },
+): Promise<Release[]> {
+  const releases: Release[] = [];
+  const prefix = opts.year ? `RELEASE#${opts.year}` : 'RELEASE#';
+  let lastKey: Record<string, unknown> | undefined;
+
+  do {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: getTableName(),
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :prefix)',
+        ExpressionAttributeValues: {
+          ':pk': `USER#${spotifyId}`,
+          ':prefix': prefix,
+          ...(opts.albumType ? { ':type': opts.albumType } : {}),
+        },
+        ...(opts.albumType ? { FilterExpression: 'albumType = :type' } : {}),
+        ScanIndexForward: false,
+        ExclusiveStartKey: lastKey,
+      }),
+    );
+    for (const item of result.Items ?? []) {
+      releases.push(item as Release);
+    }
+    lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (lastKey);
+
+  return releases;
+}
+
 export async function getYearsIndex(spotifyId: string): Promise<string[]> {
   const result = await docClient.send(
     new GetCommand({
