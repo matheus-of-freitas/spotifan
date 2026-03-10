@@ -81,8 +81,6 @@ jobs:
     permissions:
       id-token: write
       contents: write
-    env:
-      HAS_ADMIN_TOKEN: ${{ secrets.GH_ADMIN_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -104,14 +102,6 @@ jobs:
           pnpm --filter @spotifan/infra build
       - name: Deploy CDK stack
         run: cd packages/infra && npx cdk deploy --require-approval never --outputs-file cdk-outputs.json
-      - name: Set repo homepage
-        # Requires a PAT with administration:write — GITHUB_TOKEN cannot update repo settings
-        if: env.HAS_ADMIN_TOKEN == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
-        run: |
-          CF_URL=$(jq -r '.SpotifanStack.FrontendDistributionDomainName' packages/infra/cdk-outputs.json)
-          gh api "repos/${{ github.repository }}" -X PATCH -f homepage="https://${CF_URL}"
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
