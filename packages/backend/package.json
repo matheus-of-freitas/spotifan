@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && echo '{\"type\":\"module\"}' > dist/package.json",
     "dev": "tsx watch src/lambdas/local.ts",
     "test": "vitest run",
     "test:watch": "vitest",
