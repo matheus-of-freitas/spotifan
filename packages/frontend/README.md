@@ -15,15 +15,15 @@ pnpm test:coverage    # Run tests with coverage
 
 ## Tech Stack
 
-| Category | Library |
-|----------|---------|
-| Routing | TanStack Router (file-based) |
-| Data fetching | TanStack Query v5 |
-| State management | Zustand 5 |
-| Animations | Framer Motion 12 |
-| Styling | Tailwind CSS 3 (Spotify color palette) |
-| Build | Vite 5 |
-| Testing | Vitest + React Testing Library + jsdom |
+| Category         | Library                                |
+| ---------------- | -------------------------------------- |
+| Routing          | TanStack Router (file-based)           |
+| Data fetching    | TanStack Query v5                      |
+| State management | Zustand 5                              |
+| Animations       | Framer Motion 12                       |
+| Styling          | Tailwind CSS 3 (Spotify color palette) |
+| Build            | Vite 5                                 |
+| Testing          | Vitest + React Testing Library + jsdom |
 
 ## Dev Proxy
 
@@ -40,30 +40,35 @@ server: {
 
 ## Routes
 
-| Path | Component | Description |
-|------|-----------|-------------|
-| `/` | `index.tsx` | Main view — release grid with year filter and sync controls (authenticated) |
-| `/login` | `login.tsx` | Spotify OAuth login page (public) |
+| Path     | Component   | Description                                                                 |
+| -------- | ----------- | --------------------------------------------------------------------------- |
+| `/`      | `index.tsx` | Main view — release grid with year filter and sync controls (authenticated) |
+| `/login` | `login.tsx` | Spotify OAuth login page (public)                                           |
 
 ## Components
 
 ### Layout
+
 - **Header** — User profile image, display name, logout button
 
 ### Releases
+
 - **ReleaseGrid** — Infinite-scroll album grid using Intersection Observer + TanStack Query
 - **ReleaseCard** — Album card with cover art, title, artist, release date (Framer Motion animations)
 - **YearFilter** — Year filter dropdown, fetches available years from backend
 
 ### Sync
+
 - **SyncProgress** — Sync trigger button or progress bar with artist count and status (idle/running/done/error)
 
 ## State Management
 
 ### Filter Store (`store/filterStore.ts`)
+
 Manages the selected year filter for the release grid.
 
 ### Auth (`hooks/useAuth.ts`)
+
 Derives auth state directly from TanStack Query — no separate store needed.
 
 ## Source Structure

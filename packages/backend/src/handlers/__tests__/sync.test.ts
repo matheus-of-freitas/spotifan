@@ -13,9 +13,8 @@ vi.mock('@aws-sdk/client-dynamodb', () => ({
 }));
 
 vi.mock('@aws-sdk/lib-dynamodb', async () => {
-  const actual = await vi.importActual<typeof import('@aws-sdk/lib-dynamodb')>(
-    '@aws-sdk/lib-dynamodb',
-  );
+  const actual =
+    await vi.importActual<typeof import('@aws-sdk/lib-dynamodb')>('@aws-sdk/lib-dynamodb');
   return {
     ...actual,
     DynamoDBDocumentClient: {

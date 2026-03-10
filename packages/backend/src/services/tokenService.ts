@@ -56,7 +56,12 @@ export async function refreshAccessToken(encryptedRefreshToken: string): Promise
     ? encrypt(response.refresh_token, key)
     : undefined;
 
-  return { accessToken: response.access_token, encryptedAccessToken, tokenExpiresAt, newEncryptedRefreshToken };
+  return {
+    accessToken: response.access_token,
+    encryptedAccessToken,
+    tokenExpiresAt,
+    newEncryptedRefreshToken,
+  };
 }
 
 export async function getValidAccessToken(spotifyId: string): Promise<string> {

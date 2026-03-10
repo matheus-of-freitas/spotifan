@@ -11,9 +11,8 @@ vi.mock('@aws-sdk/client-dynamodb', () => ({
 }));
 
 vi.mock('@aws-sdk/lib-dynamodb', async () => {
-  const actual = await vi.importActual<typeof import('@aws-sdk/lib-dynamodb')>(
-    '@aws-sdk/lib-dynamodb',
-  );
+  const actual =
+    await vi.importActual<typeof import('@aws-sdk/lib-dynamodb')>('@aws-sdk/lib-dynamodb');
   return {
     ...actual,
     DynamoDBDocumentClient: {
@@ -70,18 +69,15 @@ describe('tokenService', () => {
         'http://localhost:3000/api/auth/callback',
       );
 
-      expect(gotPostMock).toHaveBeenCalledWith(
-        'https://accounts.spotify.com/api/token',
-        {
-          form: {
-            grant_type: 'authorization_code',
-            code: 'code123',
-            redirect_uri: 'http://localhost:3000/api/auth/callback',
-            client_id: 'test-client-id',
-            code_verifier: 'verifier123',
-          },
+      expect(gotPostMock).toHaveBeenCalledWith('https://accounts.spotify.com/api/token', {
+        form: {
+          grant_type: 'authorization_code',
+          code: 'code123',
+          redirect_uri: 'http://localhost:3000/api/auth/callback',
+          client_id: 'test-client-id',
+          code_verifier: 'verifier123',
         },
-      );
+      });
       expect(result).toEqual(tokenResponse);
     });
   });

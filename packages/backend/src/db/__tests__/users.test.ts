@@ -1,10 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-  GetCommand,
-  PutCommand,
-  UpdateCommand,
-  DeleteCommand,
-} from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, UpdateCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 
 const { sendMock } = vi.hoisted(() => {
   const sendMock = vi.fn();
@@ -16,9 +11,8 @@ vi.mock('@aws-sdk/client-dynamodb', () => ({
 }));
 
 vi.mock('@aws-sdk/lib-dynamodb', async () => {
-  const actual = await vi.importActual<typeof import('@aws-sdk/lib-dynamodb')>(
-    '@aws-sdk/lib-dynamodb',
-  );
+  const actual =
+    await vi.importActual<typeof import('@aws-sdk/lib-dynamodb')>('@aws-sdk/lib-dynamodb');
   return {
     ...actual,
     DynamoDBDocumentClient: {
@@ -113,9 +107,7 @@ describe('users', () => {
       await updateSyncStatus('user123', 'done', now);
 
       const cmd = sendMock.mock.calls[0]![0] as UpdateCommand;
-      expect(cmd.input.UpdateExpression).toBe(
-        'SET syncStatus = :s, lastSyncedAt = :t',
-      );
+      expect(cmd.input.UpdateExpression).toBe('SET syncStatus = :s, lastSyncedAt = :t');
       expect(cmd.input.ExpressionAttributeValues).toEqual({
         ':s': 'done',
         ':t': now,

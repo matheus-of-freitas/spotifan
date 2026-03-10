@@ -16,14 +16,14 @@ pnpm test:coverage    # Run tests with coverage report
 
 ### Local Development (`IS_LOCAL=true`)
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `IS_LOCAL` | Yes | Set to `true` to use env-based config |
-| `SPOTIFY_CLIENT_ID` | Yes | Spotify OAuth application ID |
-| `SPOTIFY_CLIENT_SECRET` | Yes | Spotify OAuth application secret |
-| `COOKIE_SECRET` | No | 32+ char AES key (defaults to a local dev value) |
-| `TABLE_NAME` | No | DynamoDB table name (default: `spotifan`) |
-| `SYNC_WORKER_FUNCTION_NAME` | No | Empty for local — sync runs in-process |
+| Variable                    | Required | Description                                      |
+| --------------------------- | -------- | ------------------------------------------------ |
+| `IS_LOCAL`                  | Yes      | Set to `true` to use env-based config            |
+| `SPOTIFY_CLIENT_ID`         | Yes      | Spotify OAuth application ID                     |
+| `SPOTIFY_CLIENT_SECRET`     | Yes      | Spotify OAuth application secret                 |
+| `COOKIE_SECRET`             | No       | 32+ char AES key (defaults to a local dev value) |
+| `TABLE_NAME`                | No       | DynamoDB table name (default: `spotifan`)        |
+| `SYNC_WORKER_FUNCTION_NAME` | No       | Empty for local — sync runs in-process           |
 
 ### Production
 
@@ -33,22 +33,22 @@ Config is loaded from AWS Secrets Manager (`spotifan/config`). Only `TABLE_NAME`
 
 ### Public
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/health` | Health check |
-| `GET` | `/api/auth/login` | Initiate PKCE login flow |
-| `GET` | `/api/auth/callback` | OAuth callback handler |
+| Method | Path                 | Description              |
+| ------ | -------------------- | ------------------------ |
+| `GET`  | `/api/health`        | Health check             |
+| `GET`  | `/api/auth/login`    | Initiate PKCE login flow |
+| `GET`  | `/api/auth/callback` | OAuth callback handler   |
 
 ### Protected (requires `__Host-session` cookie)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/auth/logout` | Clear session |
-| `GET` | `/api/auth/me` | Get current user info |
-| `POST` | `/api/sync` | Trigger album sync |
-| `GET` | `/api/sync/status` | Get sync progress |
-| `GET` | `/api/releases` | Get synced releases (paginated, filterable by year) |
-| `GET` | `/api/releases/years` | Get available release years |
+| Method | Path                  | Description                                         |
+| ------ | --------------------- | --------------------------------------------------- |
+| `POST` | `/api/auth/logout`    | Clear session                                       |
+| `GET`  | `/api/auth/me`        | Get current user info                               |
+| `POST` | `/api/sync`           | Trigger album sync                                  |
+| `GET`  | `/api/sync/status`    | Get sync progress                                   |
+| `GET`  | `/api/releases`       | Get synced releases (paginated, filterable by year) |
+| `GET`  | `/api/releases/years` | Get available release years                         |
 
 ## Architecture
 
@@ -84,14 +84,14 @@ lib/              ── Config, crypto, errors, retry
 
 ### DynamoDB Single-Table Design
 
-| Item | PK | SK |
-|------|----|----|
-| User | `USER#{spotifyId}` | `METADATA` |
-| Sync status | `USER#{spotifyId}` | `SYNC#CURRENT` |
-| Years index | `USER#{spotifyId}` | `YEARS#INDEX` |
-| Release | `USER#{spotifyId}` | `RELEASE#{year}#{date}#{albumId}` |
-| Artist cache | `ARTIST#{artistId}` | `RELEASE#{albumId}` |
-| PKCE state | `PKCE#{state}` | `VERIFIER` |
+| Item         | PK                  | SK                                |
+| ------------ | ------------------- | --------------------------------- |
+| User         | `USER#{spotifyId}`  | `METADATA`                        |
+| Sync status  | `USER#{spotifyId}`  | `SYNC#CURRENT`                    |
+| Years index  | `USER#{spotifyId}`  | `YEARS#INDEX`                     |
+| Release      | `USER#{spotifyId}`  | `RELEASE#{year}#{date}#{albumId}` |
+| Artist cache | `ARTIST#{artistId}` | `RELEASE#{albumId}`               |
+| PKCE state   | `PKCE#{state}`      | `VERIFIER`                        |
 
 ## Testing
 

@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  AppError,
-  UnauthorizedError,
-  NotFoundError,
-  TooManyRequestsError,
-} from '../errors.js';
+import { AppError, UnauthorizedError, NotFoundError, TooManyRequestsError } from '../errors.js';
 
 describe('errors', () => {
   describe('AppError', () => {

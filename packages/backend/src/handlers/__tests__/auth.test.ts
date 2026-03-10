@@ -13,9 +13,8 @@ vi.mock('@aws-sdk/client-dynamodb', () => ({
 }));
 
 vi.mock('@aws-sdk/lib-dynamodb', async () => {
-  const actual = await vi.importActual<typeof import('@aws-sdk/lib-dynamodb')>(
-    '@aws-sdk/lib-dynamodb',
-  );
+  const actual =
+    await vi.importActual<typeof import('@aws-sdk/lib-dynamodb')>('@aws-sdk/lib-dynamodb');
   return {
     ...actual,
     DynamoDBDocumentClient: {
@@ -101,7 +100,10 @@ describe('auth handlers', () => {
       const app = createApp();
       app.onError((err, c) => {
         if ('statusCode' in err) {
-          return c.json({ error: err.message }, { status: (err as AppError).statusCode as ContentfulStatusCode });
+          return c.json(
+            { error: err.message },
+            { status: (err as AppError).statusCode as ContentfulStatusCode },
+          );
         }
         return c.json({ error: 'Internal' }, 500);
       });
@@ -114,7 +116,10 @@ describe('auth handlers', () => {
       const app = createApp();
       app.onError((err, c) => {
         if ('statusCode' in err) {
-          return c.json({ error: err.message }, { status: (err as AppError).statusCode as ContentfulStatusCode });
+          return c.json(
+            { error: err.message },
+            { status: (err as AppError).statusCode as ContentfulStatusCode },
+          );
         }
         return c.json({ error: 'Internal' }, 500);
       });
@@ -129,7 +134,10 @@ describe('auth handlers', () => {
       const app = createApp();
       app.onError((err, c) => {
         if ('statusCode' in err) {
-          return c.json({ error: err.message }, { status: (err as AppError).statusCode as ContentfulStatusCode });
+          return c.json(
+            { error: err.message },
+            { status: (err as AppError).statusCode as ContentfulStatusCode },
+          );
         }
         return c.json({ error: 'Internal' }, 500);
       });
@@ -358,7 +366,10 @@ describe('auth handlers', () => {
       const app = createApp();
       app.onError((err, c) => {
         if ('statusCode' in err) {
-          return c.json({ error: err.message }, { status: (err as AppError).statusCode as ContentfulStatusCode });
+          return c.json(
+            { error: err.message },
+            { status: (err as AppError).statusCode as ContentfulStatusCode },
+          );
         }
         return c.json({ error: 'Internal' }, 500);
       });

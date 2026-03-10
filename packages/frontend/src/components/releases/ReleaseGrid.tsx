@@ -8,14 +8,13 @@ export function ReleaseGrid() {
   const year = useFilterStore((s) => s.year);
   const observerRef = useRef<HTMLDivElement>(null);
 
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
-    useInfiniteQuery({
-      queryKey: ['releases', { year }],
-      queryFn: ({ pageParam }) =>
-        fetchReleases({ year: year ?? undefined, cursor: pageParam as string | undefined }),
-      getNextPageParam: (lastPage) => lastPage.nextCursor,
-      initialPageParam: undefined as string | undefined,
-    });
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery({
+    queryKey: ['releases', { year }],
+    queryFn: ({ pageParam }) =>
+      fetchReleases({ year: year ?? undefined, cursor: pageParam as string | undefined }),
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialPageParam: undefined as string | undefined,
+  });
 
   const handleObserver = useCallback(
     (entries: IntersectionObserverEntry[]) => {

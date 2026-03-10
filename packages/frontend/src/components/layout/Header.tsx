@@ -20,11 +20,7 @@ export function Header() {
       {user && (
         <div className="flex items-center gap-4">
           {user.imageUrl && (
-            <img
-              src={user.imageUrl}
-              alt={user.displayName}
-              className="h-8 w-8 rounded-full"
-            />
+            <img src={user.imageUrl} alt={user.displayName} className="h-8 w-8 rounded-full" />
           )}
           <span className="text-sm text-spotify-gray-light">{user.displayName}</span>
           <button

@@ -81,9 +81,7 @@ describe('syncService', () => {
   });
 
   it('syncs followed artists and writes releases', async () => {
-    getFollowedArtistsMock.mockResolvedValue([
-      { id: 'a1', name: 'Artist 1' },
-    ]);
+    getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1' }]);
     getArtistReleasesCachedMock.mockResolvedValue(null); // no cache
     getArtistAlbumsMock.mockResolvedValue([
       makeAlbum('alb1', 'Album 1', '2024-03-15', 'a1', 'Artist 1'),
@@ -108,9 +106,7 @@ describe('syncService', () => {
   });
 
   it('uses cached artist releases when available', async () => {
-    getFollowedArtistsMock.mockResolvedValue([
-      { id: 'a1', name: 'Artist 1' },
-    ]);
+    getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1' }]);
     getArtistReleasesCachedMock.mockResolvedValue([
       {
         albumId: 'alb1',
@@ -144,7 +140,9 @@ describe('syncService', () => {
     // Same album under both artists (collab)
     getArtistAlbumsMock
       .mockResolvedValueOnce([makeAlbum('collab1', 'Collab Album', '2024-06-01', 'a1', 'Artist 1')])
-      .mockResolvedValueOnce([makeAlbum('collab1', 'Collab Album', '2024-06-01', 'a2', 'Artist 2')]);
+      .mockResolvedValueOnce([
+        makeAlbum('collab1', 'Collab Album', '2024-06-01', 'a2', 'Artist 2'),
+      ]);
 
     await runSync('user1');
 
@@ -158,9 +156,7 @@ describe('syncService', () => {
   });
 
   it('handles artist with no albums', async () => {
-    getFollowedArtistsMock.mockResolvedValue([
-      { id: 'a1', name: 'Artist 1' },
-    ]);
+    getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1' }]);
     getArtistReleasesCachedMock.mockResolvedValue(null);
     getArtistAlbumsMock.mockResolvedValue([]); // no albums
 
@@ -174,9 +170,7 @@ describe('syncService', () => {
   });
 
   it('sorts years in descending order', async () => {
-    getFollowedArtistsMock.mockResolvedValue([
-      { id: 'a1', name: 'Artist 1' },
-    ]);
+    getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1' }]);
     getArtistReleasesCachedMock.mockResolvedValue(null);
     getArtistAlbumsMock.mockResolvedValue([
       makeAlbum('alb1', 'Old Album', '2020-01-01', 'a1', 'Artist 1'),
@@ -190,9 +184,7 @@ describe('syncService', () => {
   });
 
   it('handles album with no images gracefully', async () => {
-    getFollowedArtistsMock.mockResolvedValue([
-      { id: 'a1', name: 'Artist 1' },
-    ]);
+    getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1' }]);
     getArtistReleasesCachedMock.mockResolvedValue(null);
     getArtistAlbumsMock.mockResolvedValue([
       {
@@ -240,9 +232,7 @@ describe('syncService', () => {
       { id: 'a2', name: 'Artist 2' },
     ]);
     getArtistReleasesCachedMock.mockResolvedValue(null);
-    getArtistAlbumsMock.mockResolvedValue([
-      makeAlbum('alb1', 'Album', '2024-01-01', 'a1', 'A'),
-    ]);
+    getArtistAlbumsMock.mockResolvedValue([makeAlbum('alb1', 'Album', '2024-01-01', 'a1', 'A')]);
 
     await runSync('user1');
 
@@ -253,7 +243,10 @@ describe('syncService', () => {
     // 4. after artist 2 (2/2)
     // 5. done (2/2)
     const statusCalls = (
-      putSyncStatusMock.mock.calls as [string, { status: string; processedArtists: number; totalArtists: number }][]
+      putSyncStatusMock.mock.calls as [
+        string,
+        { status: string; processedArtists: number; totalArtists: number },
+      ][]
     ).map((c) => ({
       status: c[1].status,
       processed: c[1].processedArtists,
@@ -266,9 +259,7 @@ describe('syncService', () => {
   });
 
   it('refreshes access token for each artist fetch', async () => {
-    getFollowedArtistsMock.mockResolvedValue([
-      { id: 'a1', name: 'Artist 1' },
-    ]);
+    getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1' }]);
     getArtistReleasesCachedMock.mockResolvedValue(null);
     getArtistAlbumsMock.mockResolvedValue([]);
 

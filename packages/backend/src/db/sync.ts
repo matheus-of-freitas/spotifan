@@ -10,10 +10,7 @@ export interface SyncStatus {
   updatedAt: number;
 }
 
-export async function putSyncStatus(
-  spotifyId: string,
-  status: SyncStatus,
-): Promise<void> {
+export async function putSyncStatus(spotifyId: string, status: SyncStatus): Promise<void> {
   const ttl = Math.floor(Date.now() / 1000) + 3600; // +1h
   await docClient.send(
     new PutCommand({
@@ -28,9 +25,7 @@ export async function putSyncStatus(
   );
 }
 
-export async function getSyncStatus(
-  spotifyId: string,
-): Promise<SyncStatus | null> {
+export async function getSyncStatus(spotifyId: string): Promise<SyncStatus | null> {
   const result = await docClient.send(
     new GetCommand({
       TableName: getTableName(),

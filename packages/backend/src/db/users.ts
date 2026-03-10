@@ -1,9 +1,4 @@
-import {
-  DeleteCommand,
-  GetCommand,
-  PutCommand,
-  UpdateCommand,
-} from '@aws-sdk/lib-dynamodb';
+import { DeleteCommand, GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient, getTableName } from './client.js';
 
 export interface UserMetadata {
@@ -64,11 +59,7 @@ export async function updateSyncStatus(
   );
 }
 
-export async function storePkceState(
-  state: string,
-  verifier: string,
-  ttl: number,
-): Promise<void> {
+export async function storePkceState(state: string, verifier: string, ttl: number): Promise<void> {
   await docClient.send(
     new PutCommand({
       TableName: getTableName(),

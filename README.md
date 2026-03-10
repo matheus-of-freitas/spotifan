@@ -8,22 +8,22 @@ Spotifan syncs your followed artists from Spotify and builds a chronological fee
 
 Monorepo with three packages:
 
-| Package | Description |
-|---------|-------------|
-| [`packages/backend`](packages/backend/) | Hono API on AWS Lambda — auth, sync, releases |
-| [`packages/frontend`](packages/frontend/) | React 18 SPA — Spotify-styled release browser |
-| [`packages/infra`](packages/infra/) | AWS CDK v2 — DynamoDB, Lambda, API Gateway, CloudFront |
+| Package                                   | Description                                            |
+| ----------------------------------------- | ------------------------------------------------------ |
+| [`packages/backend`](packages/backend/)   | Hono API on AWS Lambda — auth, sync, releases          |
+| [`packages/frontend`](packages/frontend/) | React 18 SPA — Spotify-styled release browser          |
+| [`packages/infra`](packages/infra/)       | AWS CDK v2 — DynamoDB, Lambda, API Gateway, CloudFront |
 
 ## Tech Stack
 
-| Layer | Technologies |
-|-------|-------------|
-| Frontend | React 18, TanStack Router, TanStack Query v5, Zustand, Framer Motion, Tailwind CSS |
-| Backend | Node.js 22, Hono, TypeScript (strict), DynamoDB (single-table) |
-| Infrastructure | AWS CDK v2, Lambda, API Gateway v2, S3, CloudFront |
-| Auth | Spotify PKCE OAuth, AES-256-GCM token encryption |
-| Testing | Vitest, MSW v2, React Testing Library |
-| CI/CD | GitHub Actions |
+| Layer          | Technologies                                                                       |
+| -------------- | ---------------------------------------------------------------------------------- |
+| Frontend       | React 18, TanStack Router, TanStack Query v5, Zustand, Framer Motion, Tailwind CSS |
+| Backend        | Node.js 22, Hono, TypeScript (strict), DynamoDB (single-table)                     |
+| Infrastructure | AWS CDK v2, Lambda, API Gateway v2, S3, CloudFront                                 |
+| Auth           | Spotify PKCE OAuth, AES-256-GCM token encryption                                   |
+| Testing        | Vitest, MSW v2, React Testing Library                                              |
+| CI/CD          | GitHub Actions                                                                     |
 
 ## Prerequisites
 
@@ -52,29 +52,29 @@ pnpm dev:frontend
 
 ### Environment Variables (Local)
 
-| Variable | Description |
-|----------|-------------|
-| `IS_LOCAL` | Set to `true` for local development |
-| `SPOTIFY_CLIENT_ID` | Spotify OAuth app client ID |
-| `SPOTIFY_CLIENT_SECRET` | Spotify OAuth app client secret |
-| `COOKIE_SECRET` | 32+ char secret for token encryption (has a default for local dev) |
-| `TABLE_NAME` | DynamoDB table name (default: `spotifan`) |
-| `SYNC_WORKER_FUNCTION_NAME` | Lambda name for async sync (empty for local = runs in-process) |
+| Variable                    | Description                                                        |
+| --------------------------- | ------------------------------------------------------------------ |
+| `IS_LOCAL`                  | Set to `true` for local development                                |
+| `SPOTIFY_CLIENT_ID`         | Spotify OAuth app client ID                                        |
+| `SPOTIFY_CLIENT_SECRET`     | Spotify OAuth app client secret                                    |
+| `COOKIE_SECRET`             | 32+ char secret for token encryption (has a default for local dev) |
+| `TABLE_NAME`                | DynamoDB table name (default: `spotifan`)                          |
+| `SYNC_WORKER_FUNCTION_NAME` | Lambda name for async sync (empty for local = runs in-process)     |
 
 ## Scripts
 
-| Script | Description |
-|--------|-------------|
-| `pnpm dev:frontend` | Start frontend dev server |
-| `pnpm dev:backend` | Start backend dev server |
-| `pnpm build` | Build all packages |
-| `pnpm test` | Run all tests |
-| `pnpm test:backend` | Run backend tests |
-| `pnpm test:frontend` | Run frontend tests |
-| `pnpm lint` | Run ESLint |
-| `pnpm lint:fix` | Fix lint issues |
-| `pnpm format` | Format with Prettier |
-| `pnpm format:check` | Check formatting |
+| Script               | Description               |
+| -------------------- | ------------------------- |
+| `pnpm dev:frontend`  | Start frontend dev server |
+| `pnpm dev:backend`   | Start backend dev server  |
+| `pnpm build`         | Build all packages        |
+| `pnpm test`          | Run all tests             |
+| `pnpm test:backend`  | Run backend tests         |
+| `pnpm test:frontend` | Run frontend tests        |
+| `pnpm lint`          | Run ESLint                |
+| `pnpm lint:fix`      | Fix lint issues           |
+| `pnpm format`        | Format with Prettier      |
+| `pnpm format:check`  | Check formatting          |
 
 ## Project Structure
 

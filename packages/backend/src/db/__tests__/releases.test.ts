@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-  BatchWriteCommand,
-  PutCommand,
-  QueryCommand,
-} from '@aws-sdk/lib-dynamodb';
+import { BatchWriteCommand, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 const { sendMock } = vi.hoisted(() => {
   const sendMock = vi.fn();
@@ -15,9 +11,8 @@ vi.mock('@aws-sdk/client-dynamodb', () => ({
 }));
 
 vi.mock('@aws-sdk/lib-dynamodb', async () => {
-  const actual = await vi.importActual<typeof import('@aws-sdk/lib-dynamodb')>(
-    '@aws-sdk/lib-dynamodb',
-  );
+  const actual =
+    await vi.importActual<typeof import('@aws-sdk/lib-dynamodb')>('@aws-sdk/lib-dynamodb');
   return {
     ...actual,
     DynamoDBDocumentClient: {
@@ -69,17 +64,13 @@ describe('releases', () => {
       const items = cmd.input.RequestItems!['spotifan-test']!;
       expect(items).toHaveLength(1);
       expect(items[0]!.PutRequest!.Item!['PK']).toBe('USER#user1');
-      expect(items[0]!.PutRequest!.Item!['SK']).toBe(
-        'RELEASE#2024#2024-01-15#album1',
-      );
+      expect(items[0]!.PutRequest!.Item!['SK']).toBe('RELEASE#2024#2024-01-15#album1');
       expect(items[0]!.PutRequest!.Item!['ttl']).toBeTypeOf('number');
     });
 
     it('chunks batches of more than 25 items', async () => {
       sendMock.mockResolvedValue({});
-      const releases = Array.from({ length: 30 }, (_, i) =>
-        makeRelease({ albumId: `album${i}` }),
-      );
+      const releases = Array.from({ length: 30 }, (_, i) => makeRelease({ albumId: `album${i}` }));
 
       await batchWriteUserReleases('user1', releases);
 
@@ -119,9 +110,7 @@ describe('releases', () => {
 
       expect(result).toEqual([release]);
       const cmd = sendMock.mock.calls[0]![0] as QueryCommand;
-      expect(cmd.input.KeyConditionExpression).toBe(
-        'PK = :pk AND begins_with(SK, :prefix)',
-      );
+      expect(cmd.input.KeyConditionExpression).toBe('PK = :pk AND begins_with(SK, :prefix)');
       expect(cmd.input.FilterExpression).toBe('#ttl > :now');
       expect(cmd.input.ExpressionAttributeNames).toEqual({ '#ttl': 'ttl' });
     });
@@ -167,9 +156,7 @@ describe('releases', () => {
       await queryUserReleases('user1', { year: '2024' });
 
       const cmd = sendMock.mock.calls[0]![0] as QueryCommand;
-      expect(cmd.input.ExpressionAttributeValues![':prefix']).toBe(
-        'RELEASE#2024',
-      );
+      expect(cmd.input.ExpressionAttributeValues![':prefix']).toBe('RELEASE#2024');
     });
 
     it('filters by album type', async () => {
@@ -207,9 +194,7 @@ describe('releases', () => {
       const result = await queryUserReleases('user1', {});
 
       expect(result.nextCursor).toBeDefined();
-      const decoded = JSON.parse(
-        Buffer.from(result.nextCursor!, 'base64url').toString('utf8'),
-      );
+      const decoded = JSON.parse(Buffer.from(result.nextCursor!, 'base64url').toString('utf8'));
       expect(decoded).toEqual(lastKey);
     });
 

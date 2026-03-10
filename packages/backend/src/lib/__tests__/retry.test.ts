@@ -19,10 +19,7 @@ describe('retry', () => {
   });
 
   it('retries on TooManyRequestsError and succeeds', async () => {
-    const fn = vi
-      .fn()
-      .mockRejectedValueOnce(new TooManyRequestsError(0))
-      .mockResolvedValue('ok');
+    const fn = vi.fn().mockRejectedValueOnce(new TooManyRequestsError(0)).mockResolvedValue('ok');
 
     const result = await withRetry(fn);
     expect(result).toBe('ok');
@@ -31,10 +28,7 @@ describe('retry', () => {
 
   it('retries on 5xx server error with exponential backoff', async () => {
     const serverError = new AppError(502, 'Bad gateway');
-    const fn = vi
-      .fn()
-      .mockRejectedValueOnce(serverError)
-      .mockResolvedValue('ok');
+    const fn = vi.fn().mockRejectedValueOnce(serverError).mockResolvedValue('ok');
 
     const result = await withRetry(fn, 3);
     expect(result).toBe('ok');

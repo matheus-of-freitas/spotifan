@@ -51,10 +51,10 @@ pnpm deploy           # Deploy stack to AWS
 
 ### Lambda Functions
 
-| Function | Memory | Timeout | Purpose |
-|----------|--------|---------|---------|
-| API Handler | 256 MB | 30s | Hono API (auth, releases, sync trigger) |
-| Sync Worker | 1024 MB | 15min | Async album sync from Spotify |
+| Function    | Memory  | Timeout | Purpose                                 |
+| ----------- | ------- | ------- | --------------------------------------- |
+| API Handler | 256 MB  | 30s     | Hono API (auth, releases, sync trigger) |
+| Sync Worker | 1024 MB | 15min   | Async album sync from Spotify           |
 
 Both Lambdas run Node.js 22 and have access to DynamoDB and Secrets Manager.
 
@@ -87,11 +87,13 @@ The secret `spotifan/config` must be a JSON object:
 ### First-Time Setup
 
 1. **Configure AWS credentials:**
+
    ```bash
    aws configure sso    # or aws configure for access keys
    ```
 
 2. **Bootstrap CDK** (one-time per account/region):
+
    ```bash
    pnpm --filter @spotifan/infra cdk bootstrap
    ```

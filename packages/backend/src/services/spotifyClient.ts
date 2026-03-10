@@ -41,9 +41,10 @@ function handleSpotifyError(err: unknown): never {
   ) {
     const response = (err as { response: { statusCode: number; body?: string } }).response;
     if (response.statusCode === 429) {
-      const retryAfter = 'headers' in response
-        ? Number((response as { headers: Record<string, string> }).headers['retry-after'] ?? '1')
-        : 1;
+      const retryAfter =
+        'headers' in response
+          ? Number((response as { headers: Record<string, string> }).headers['retry-after'] ?? '1')
+          : 1;
       throw new TooManyRequestsError(retryAfter);
     }
     throw new AppError(response.statusCode, `Spotify API error: ${response.statusCode}`);
@@ -51,9 +52,7 @@ function handleSpotifyError(err: unknown): never {
   throw err;
 }
 
-export async function getFollowedArtists(
-  accessToken: string,
-): Promise<SpotifyArtist[]> {
+export async function getFollowedArtists(accessToken: string): Promise<SpotifyArtist[]> {
   const artists: SpotifyArtist[] = [];
   let after: string | undefined;
 

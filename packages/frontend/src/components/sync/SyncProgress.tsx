@@ -79,9 +79,7 @@ export function SyncProgress() {
           </motion.button>
         )}
       </AnimatePresence>
-      {syncError && (
-        <span className="text-xs text-red-400">{syncError}</span>
-      )}
+      {syncError && <span className="text-xs text-red-400">{syncError}</span>}
       {status?.status === 'error' && (
         <span className="text-xs text-red-400">
           Sync failed: {status.errorMessage ?? 'Unknown error'}

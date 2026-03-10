@@ -33,9 +33,7 @@ export async function getConfig(): Promise<Config> {
 
   const client = new SecretsManagerClient({});
   const secretName = process.env['SECRET_NAME'] ?? 'spotifan/config';
-  const response = await client.send(
-    new GetSecretValueCommand({ SecretId: secretName }),
-  );
+  const response = await client.send(new GetSecretValueCommand({ SecretId: secretName }));
   const secret = JSON.parse(response.SecretString ?? '{}') as Record<string, string>;
   cached = {
     spotifyClientId: secret['spotifyClientId'] ?? '',

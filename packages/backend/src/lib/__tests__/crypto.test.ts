@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { encrypt, decrypt, encryptionKeyFromSecret } from '../crypto.js';
 
-
 describe('crypto', () => {
   const secret = 'test-secret-key-for-encryption!!';
   const key = encryptionKeyFromSecret(secret);

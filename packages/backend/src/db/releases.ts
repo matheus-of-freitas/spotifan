@@ -1,9 +1,4 @@
-import {
-  BatchWriteCommand,
-  GetCommand,
-  PutCommand,
-  QueryCommand,
-} from '@aws-sdk/lib-dynamodb';
+import { BatchWriteCommand, GetCommand, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient, getTableName } from './client.js';
 
 export interface Release {
@@ -51,9 +46,7 @@ export async function batchWriteUserReleases(
   }
 }
 
-export async function batchWriteArtistReleases(
-  releases: Release[],
-): Promise<void> {
+export async function batchWriteArtistReleases(releases: Release[]): Promise<void> {
   const tableName = getTableName();
   const ttl = Math.floor(Date.now() / 1000) + 86400; // +24h
 
@@ -78,9 +71,7 @@ export async function batchWriteArtistReleases(
   }
 }
 
-export async function getArtistReleasesCached(
-  artistId: string,
-): Promise<Release[] | null> {
+export async function getArtistReleasesCached(artistId: string): Promise<Release[] | null> {
   const now = Math.floor(Date.now() / 1000);
   const result = await docClient.send(
     new QueryCommand({
@@ -125,9 +116,7 @@ export async function queryUserReleases(
       Limit: limit,
       ...(opts.cursor
         ? {
-            ExclusiveStartKey: JSON.parse(
-              Buffer.from(opts.cursor, 'base64url').toString('utf8'),
-            ),
+            ExclusiveStartKey: JSON.parse(Buffer.from(opts.cursor, 'base64url').toString('utf8')),
           }
         : {}),
     }),
@@ -136,9 +125,7 @@ export async function queryUserReleases(
   const items = (result.Items ?? []) as Release[];
   let nextCursor: string | undefined;
   if (result.LastEvaluatedKey) {
-    nextCursor = Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString(
-      'base64url',
-    );
+    nextCursor = Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString('base64url');
   }
 
   return { items, nextCursor };
@@ -154,10 +141,7 @@ export async function getYearsIndex(spotifyId: string): Promise<string[]> {
   return (result.Item?.['years'] as string[] | undefined) ?? [];
 }
 
-export async function putYearsIndex(
-  spotifyId: string,
-  years: string[],
-): Promise<void> {
+export async function putYearsIndex(spotifyId: string, years: string[]): Promise<void> {
   await docClient.send(
     new PutCommand({
       TableName: getTableName(),

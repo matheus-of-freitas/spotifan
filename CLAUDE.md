@@ -39,6 +39,7 @@ packages/
 ## Testing
 
 ### Backend
+
 - Framework: Vitest
 - Coverage: **100% line/function/branch/statement** enforced via thresholds
 - HTTP mocking: MSW v2
@@ -46,6 +47,7 @@ packages/
 - Coverage: `pnpm --filter @spotifan/backend test:coverage`
 
 ### Frontend
+
 - Framework: Vitest + React Testing Library + jsdom
 - Coverage: best-effort (no strict threshold)
 - Run: `pnpm --filter @spotifan/frontend test`
@@ -61,32 +63,37 @@ pnpm format        # Prettier fix
 ## Key Architectural Decisions
 
 ### Albums Only
+
 Sync fetches **albums only** (no singles, no compilations). The Spotify API call uses `include_groups=album`.
 
 ### Deduplication
+
 Collab albums (same albumId under multiple artists) are deduplicated during sync using a `seenAlbumIds: Set<string>`. Each album appears once in the user's release list.
 
 ### Caching
+
 - Artist releases cached in DynamoDB with 24h TTL (`ARTIST#{id}` namespace)
 - User can sync at most once per 24h (enforced via `lastSyncedAt` check)
 - Stale cache → re-fetch from Spotify; fresh cache → skip API call
 
 ### Auth
+
 - PKCE flow, server-side only (verifier stored in DynamoDB, TTL 10min)
 - Tokens encrypted with AES-256-GCM, stored in DynamoDB
 - Session: `__Host-session` HttpOnly/Secure cookie containing Spotify user ID
 
 ### DynamoDB Single-Table Design
+
 Table: `spotifan` | PK + SK | GSI1PK + GSI1SK | TTL: `ttl`
 
-| Item | PK | SK |
-|---|---|---|
-| User | `USER#{spotifyId}` | `METADATA` |
-| Sync status | `USER#{spotifyId}` | `SYNC#CURRENT` |
-| Years index | `USER#{spotifyId}` | `YEARS#INDEX` |
-| Release | `USER#{spotifyId}` | `RELEASE#{year}#{date}#{albumId}` |
-| Artist cache | `ARTIST#{artistId}` | `RELEASE#{albumId}` |
-| PKCE state | `PKCE#{state}` | `VERIFIER` |
+| Item         | PK                  | SK                                |
+| ------------ | ------------------- | --------------------------------- |
+| User         | `USER#{spotifyId}`  | `METADATA`                        |
+| Sync status  | `USER#{spotifyId}`  | `SYNC#CURRENT`                    |
+| Years index  | `USER#{spotifyId}`  | `YEARS#INDEX`                     |
+| Release      | `USER#{spotifyId}`  | `RELEASE#{year}#{date}#{albumId}` |
+| Artist cache | `ARTIST#{artistId}` | `RELEASE#{albumId}`               |
+| PKCE state   | `PKCE#{state}`      | `VERIFIER`                        |
 
 ## Environment Variables (Backend)
 
