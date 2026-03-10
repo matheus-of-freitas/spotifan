@@ -141,12 +141,24 @@ describe('sync handlers', () => {
       expect(body.error).toContain('full');
     });
 
-    it('returns 409 when sync already running', async () => {
+    it('returns 409 when sync is recently running', async () => {
+      // getUser returns running
       sendMock.mockResolvedValueOnce({
         Item: {
           spotifyId: 'user1',
           syncStatus: 'running',
           lastQuickSyncAt: Date.now() - 100000000, // long ago
+        },
+      });
+      // getSyncStatus returns recently started sync
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          status: 'running',
+          syncType: 'quick',
+          totalArtists: 10,
+          processedArtists: 3,
+          startedAt: Date.now() - 5 * 60 * 1000, // 5 minutes ago
+          updatedAt: Date.now(),
         },
       });
 
@@ -157,6 +169,63 @@ describe('sync handlers', () => {
       });
 
       expect(res.status).toBe(409);
+    });
+
+    it('auto-resets stale sync older than 20 minutes', async () => {
+      runSyncMock.mockResolvedValue(undefined);
+      // getUser returns running
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          spotifyId: 'user1',
+          syncStatus: 'running',
+          lastQuickSyncAt: Date.now() - 100000000,
+        },
+      });
+      // getSyncStatus returns stale sync (started 25 min ago)
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          status: 'running',
+          syncType: 'quick',
+          totalArtists: 10,
+          processedArtists: 3,
+          startedAt: Date.now() - 25 * 60 * 1000, // 25 minutes ago
+          updatedAt: Date.now() - 20 * 60 * 1000,
+        },
+      });
+      // updateSyncStatus (reset to error)
+      sendMock.mockResolvedValueOnce({});
+
+      const app = createApp();
+      const res = await app.request('/api/sync', {
+        method: 'POST',
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(202);
+    });
+
+    it('auto-resets stale sync when no sync status exists', async () => {
+      runSyncMock.mockResolvedValue(undefined);
+      // getUser returns running
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          spotifyId: 'user1',
+          syncStatus: 'running',
+          lastQuickSyncAt: Date.now() - 100000000,
+        },
+      });
+      // getSyncStatus returns null (no SYNC#CURRENT item)
+      sendMock.mockResolvedValueOnce({ Item: undefined });
+      // updateSyncStatus (reset to error)
+      sendMock.mockResolvedValueOnce({});
+
+      const app = createApp();
+      const res = await app.request('/api/sync', {
+        method: 'POST',
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(202);
     });
 
     it('starts quick sync locally when no SYNC_WORKER_FUNCTION_NAME', async () => {

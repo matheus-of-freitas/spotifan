@@ -2,12 +2,14 @@ import type { Context } from 'hono';
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
 import { getSyncStatus } from '../db/sync.js';
 import { getUser } from '../db/users.js';
+import { updateSyncStatus } from '../db/users.js';
 import { AppError } from '../lib/errors.js';
 import { runSync } from '../services/syncService.js';
 import type { HonoEnv } from '../lib/honoTypes.js';
 
 const QUICK_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
 const FULL_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const STALE_SYNC_MS = 20 * 60 * 1000; // 20 minutes
 
 export async function handleSync(c: Context<HonoEnv>): Promise<Response> {
   const spotifyId = c.get('spotifyId');
@@ -29,7 +31,14 @@ export async function handleSync(c: Context<HonoEnv>): Promise<Response> {
 
   // Check if already running
   if (user.syncStatus === 'running') {
-    throw new AppError(409, 'Sync already in progress');
+    const syncStatus = await getSyncStatus(spotifyId);
+    const isStale = !syncStatus || Date.now() - syncStatus.startedAt > STALE_SYNC_MS;
+
+    if (isStale) {
+      await updateSyncStatus(spotifyId, 'error');
+    } else {
+      throw new AppError(409, 'Sync already in progress');
+    }
   }
 
   const workerFunctionName = process.env['SYNC_WORKER_FUNCTION_NAME'];

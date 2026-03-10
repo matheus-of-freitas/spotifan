@@ -1,35 +1,63 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchSyncStatus, triggerSync } from '../../api/sync';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+const JUST_TRIGGERED_TIMEOUT_MS = 30_000;
 
 export function SyncProgress() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const wasRunningRef = useRef(false);
+  const justTriggeredRef = useRef(false);
+  const justTriggeredTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const clearJustTriggered = useCallback(() => {
+    justTriggeredRef.current = false;
+    if (justTriggeredTimerRef.current) {
+      clearTimeout(justTriggeredTimerRef.current);
+      justTriggeredTimerRef.current = undefined;
+    }
+  }, []);
 
   const { data: status } = useQuery({
     queryKey: ['sync', 'status'],
     queryFn: fetchSyncStatus,
     refetchInterval: (query) => {
       const currentStatus = query.state.data?.status;
-      return currentStatus === 'running' ? 2000 : false;
+      if (currentStatus === 'running' || justTriggeredRef.current) return 2000;
+      return false;
     },
   });
 
   useEffect(() => {
     if (status?.status === 'running') {
       wasRunningRef.current = true;
+      if (justTriggeredRef.current) {
+        clearJustTriggered();
+      }
     } else if (wasRunningRef.current && (status?.status === 'done' || status?.status === 'idle')) {
       wasRunningRef.current = false;
       void queryClient.invalidateQueries({ queryKey: ['releases'] });
     }
-  }, [status?.status, queryClient]);
+  }, [status?.status, queryClient, clearJustTriggered]);
+
+  useEffect(() => {
+    return () => {
+      if (justTriggeredTimerRef.current) {
+        clearTimeout(justTriggeredTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleSync = async (syncType: 'quick' | 'full') => {
     setSyncError(null);
     try {
       await triggerSync(syncType);
+      justTriggeredRef.current = true;
+      justTriggeredTimerRef.current = setTimeout(() => {
+        justTriggeredRef.current = false;
+      }, JUST_TRIGGERED_TIMEOUT_MS);
       await queryClient.invalidateQueries({ queryKey: ['sync', 'status'] });
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : 'Sync failed');
