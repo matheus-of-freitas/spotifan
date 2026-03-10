@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { setCookie, deleteCookie } from 'hono/cookie';
 import { createHash, randomBytes } from 'node:crypto';
 import { getConfig } from '../lib/config.js';
 import { storePkceState, consumePkceState, putUser, getUser } from '../db/users.js';
@@ -12,6 +13,11 @@ interface SpotifyProfile {
   display_name: string;
   email: string;
   images: Array<{ url: string }>;
+}
+
+function getCookieConfig() {
+  const local = process.env['IS_LOCAL'] === 'true';
+  return { name: local ? 'session' : '__Host-session', local };
 }
 
 function getRedirectUri(c: Context): string {
@@ -83,18 +89,19 @@ export async function handleCallback(c: Context<HonoEnv>): Promise<Response> {
     lastSyncedAt: existing?.lastSyncedAt,
   });
 
-  c.header(
-    'Set-Cookie',
-    `__Host-session=${profile.id}; HttpOnly; Secure; SameSite=Lax; Path=/`,
-  );
+  const cookie = getCookieConfig();
+  setCookie(c, cookie.name, profile.id, {
+    httpOnly: true,
+    secure: !cookie.local,
+    sameSite: 'Lax',
+    path: '/',
+  });
   return c.redirect('/');
 }
 
 export async function handleLogout(c: Context<HonoEnv>): Promise<Response> {
-  c.header(
-    'Set-Cookie',
-    '__Host-session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0',
-  );
+  const cookie = getCookieConfig();
+  deleteCookie(c, cookie.name, { path: '/' });
   return c.json({ ok: true });
 }
 

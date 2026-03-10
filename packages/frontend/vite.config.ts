@@ -11,8 +11,13 @@ export default defineConfig({
     },
   },
   server: {
+    host: '127.0.0.1',
     proxy: {
-      '/api': 'http://localhost:3000',
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: false,
+        headers: { host: '127.0.0.1:5173' },
+      },
     },
   },
 });

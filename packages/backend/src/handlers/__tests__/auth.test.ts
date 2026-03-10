@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
+import { getCookie } from 'hono/cookie';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
 const { sendMock } = vi.hoisted(() => {
   const sendMock = vi.fn();
@@ -53,9 +55,9 @@ function createApp() {
     const path = new URL(c.req.url).pathname;
     const publicPaths = ['/api/auth/login', '/api/auth/callback'];
     if (publicPaths.includes(path)) return next();
-    const cookieHeader = c.req.header('cookie') ?? '';
-    const sessionMatch = cookieHeader.match(/__Host-session=([^;]+)/);
-    const spotifyId = sessionMatch?.[1];
+    const isLocal = process.env['IS_LOCAL'] === 'true';
+    const cookieName = isLocal ? 'session' : '__Host-session';
+    const spotifyId = getCookie(c, cookieName);
     if (!spotifyId) return c.json({ error: 'Unauthorized' }, 401);
     c.set('spotifyId', spotifyId);
     return next();
@@ -99,7 +101,7 @@ describe('auth handlers', () => {
       const app = createApp();
       app.onError((err, c) => {
         if ('statusCode' in err) {
-          return c.json({ error: err.message }, { status: (err as { statusCode: number }).statusCode });
+          return c.json({ error: err.message }, { status: (err as AppError).statusCode as ContentfulStatusCode });
         }
         return c.json({ error: 'Internal' }, 500);
       });
@@ -112,7 +114,7 @@ describe('auth handlers', () => {
       const app = createApp();
       app.onError((err, c) => {
         if ('statusCode' in err) {
-          return c.json({ error: err.message }, { status: (err as { statusCode: number }).statusCode });
+          return c.json({ error: err.message }, { status: (err as AppError).statusCode as ContentfulStatusCode });
         }
         return c.json({ error: 'Internal' }, 500);
       });
@@ -127,7 +129,7 @@ describe('auth handlers', () => {
       const app = createApp();
       app.onError((err, c) => {
         if ('statusCode' in err) {
-          return c.json({ error: err.message }, { status: (err as { statusCode: number }).statusCode });
+          return c.json({ error: err.message }, { status: (err as AppError).statusCode as ContentfulStatusCode });
         }
         return c.json({ error: 'Internal' }, 500);
       });
@@ -167,10 +169,48 @@ describe('auth handlers', () => {
 
       expect(res.status).toBe(302);
       expect(res.headers.get('location')).toBe('/');
-      const setCookie = res.headers.get('set-cookie')!;
-      expect(setCookie).toContain('__Host-session=spotify-user-1');
-      expect(setCookie).toContain('HttpOnly');
-      expect(setCookie).toContain('Secure');
+      const setCookieHeader = res.headers.get('set-cookie')!;
+      expect(setCookieHeader).toContain('session=spotify-user-1');
+      expect(setCookieHeader).toContain('HttpOnly');
+    });
+
+    it('uses __Host-session with Secure when IS_LOCAL is not set', async () => {
+      // Prime config cache while IS_LOCAL is true, then switch to prod mode
+      const { getConfig } = await import('../../lib/config.js');
+      await getConfig();
+      process.env['IS_LOCAL'] = 'false';
+
+      sendMock
+        .mockResolvedValueOnce({ Item: { verifier: 'test-verifier' } })
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ Item: undefined })
+        .mockResolvedValueOnce({});
+
+      gotPostMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue({
+          access_token: 'test-access',
+          refresh_token: 'test-refresh',
+          expires_in: 3600,
+          token_type: 'Bearer',
+        }),
+      });
+
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue({
+          id: 'spotify-user-1',
+          display_name: 'Test User',
+          email: 'test@example.com',
+          images: [{ url: 'https://img.spotify.com/avatar.jpg' }],
+        }),
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/auth/callback?code=auth-code&state=valid-state');
+
+      expect(res.status).toBe(302);
+      const setCookieHeader = res.headers.get('set-cookie')!;
+      expect(setCookieHeader).toContain('__Host-session=spotify-user-1');
+      expect(setCookieHeader).toContain('Secure');
     });
 
     it('handles missing refresh_token in Spotify response', async () => {
@@ -242,7 +282,7 @@ describe('auth handlers', () => {
       const app = createApp();
       app.onError((err, c) => {
         if (err instanceof AppError) {
-          return c.json({ error: err.message }, { status: err.statusCode });
+          return c.json({ error: err.message }, { status: err.statusCode as ContentfulStatusCode });
         }
         return c.json({ error: 'Internal' }, 500);
       });
@@ -262,7 +302,7 @@ describe('auth handlers', () => {
       const app = createApp();
       const res = await app.request('/api/auth/logout', {
         method: 'POST',
-        headers: { cookie: '__Host-session=user1' },
+        headers: { cookie: 'session=user1' },
       });
 
       expect(res.status).toBe(200);
@@ -297,7 +337,7 @@ describe('auth handlers', () => {
 
       const app = createApp();
       const res = await app.request('/api/auth/me', {
-        headers: { cookie: '__Host-session=user1' },
+        headers: { cookie: 'session=user1' },
       });
 
       expect(res.status).toBe(200);
@@ -318,13 +358,13 @@ describe('auth handlers', () => {
       const app = createApp();
       app.onError((err, c) => {
         if ('statusCode' in err) {
-          return c.json({ error: err.message }, { status: (err as { statusCode: number }).statusCode });
+          return c.json({ error: err.message }, { status: (err as AppError).statusCode as ContentfulStatusCode });
         }
         return c.json({ error: 'Internal' }, 500);
       });
 
       const res = await app.request('/api/auth/me', {
-        headers: { cookie: '__Host-session=nonexistent' },
+        headers: { cookie: 'session=nonexistent' },
       });
       expect(res.status).toBe(404);
     });

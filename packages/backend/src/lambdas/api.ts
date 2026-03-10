@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
+import { getCookie } from 'hono/cookie';
 import { handle } from 'hono/aws-lambda';
 import { AppError } from '../lib/errors.js';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { HonoEnv } from '../lib/honoTypes.js';
 import { handleLogin, handleCallback, handleLogout, handleMe } from '../handlers/auth.js';
 import { handleSync, handleSyncStatus } from '../handlers/sync.js';
@@ -14,9 +16,9 @@ app.use('/api/*', async (c, next) => {
   const publicPaths = ['/api/auth/login', '/api/auth/callback', '/api/health'];
   if (publicPaths.includes(path)) return next();
 
-  const cookieHeader = c.req.header('cookie') ?? '';
-  const sessionMatch = cookieHeader.match(/__Host-session=([^;]+)/);
-  const spotifyId = sessionMatch?.[1];
+  const isLocal = process.env['IS_LOCAL'] === 'true';
+  const cookieName = isLocal ? 'session' : '__Host-session';
+  const spotifyId = getCookie(c, cookieName);
 
   if (!spotifyId) throw new AppError(401, 'Not authenticated');
   c.set('spotifyId', spotifyId);
@@ -46,7 +48,7 @@ app.onError((err, c) => {
   if (err instanceof AppError) {
     return c.json(
       { error: err.message, code: err.code },
-      { status: err.statusCode },
+      { status: err.statusCode as ContentfulStatusCode },
     );
   }
   return c.json({ error: 'Internal server error' }, 500);
