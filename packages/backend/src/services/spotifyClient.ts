@@ -5,6 +5,7 @@ import { AppError, TooManyRequestsError } from '../lib/errors.js';
 interface SpotifyArtist {
   id: string;
   name: string;
+  genres: string[];
 }
 
 interface SpotifyFollowedArtistsResponse {

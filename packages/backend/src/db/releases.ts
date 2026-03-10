@@ -11,6 +11,7 @@ export interface Release {
   spotifyUrl: string;
   releaseDate: string;
   year: string;
+  genres: string[];
 }
 
 export interface ReleasesPage {
@@ -114,6 +115,7 @@ export async function queryUserReleases(
   opts: {
     year?: string;
     albumType?: string;
+    genres?: string[];
     startDate?: string;
     endDate?: string;
     cursor?: string;
@@ -132,6 +134,15 @@ export async function queryUserReleases(
   if (opts.albumType) {
     filterParts.push('albumType = :type');
     exprValues[':type'] = opts.albumType;
+  }
+
+  if (opts.genres && opts.genres.length > 0) {
+    const genreConditions = opts.genres.map((g, i) => {
+      const key = `:genre${i}`;
+      exprValues[key] = g;
+      return `contains(genres, ${key})`;
+    });
+    filterParts.push(`(${genreConditions.join(' OR ')})`);
   }
 
   if (opts.startDate && opts.endDate) {
@@ -217,6 +228,29 @@ export async function putYearsIndex(spotifyId: string, years: string[]): Promise
         PK: `USER#${spotifyId}`,
         SK: 'YEARS#INDEX',
         years,
+      },
+    }),
+  );
+}
+
+export async function getGenresIndex(spotifyId: string): Promise<string[]> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: getTableName(),
+      Key: { PK: `USER#${spotifyId}`, SK: 'GENRES#INDEX' },
+    }),
+  );
+  return (result.Item?.['genres'] as string[] | undefined) ?? [];
+}
+
+export async function putGenresIndex(spotifyId: string, genres: string[]): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: getTableName(),
+      Item: {
+        PK: `USER#${spotifyId}`,
+        SK: 'GENRES#INDEX',
+        genres,
       },
     }),
   );

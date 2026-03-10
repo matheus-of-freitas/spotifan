@@ -6,7 +6,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { HonoEnv } from '../lib/honoTypes.js';
 import { handleLogin, handleCallback, handleLogout, handleMe } from '../handlers/auth.js';
 import { handleSync, handleSyncStatus } from '../handlers/sync.js';
-import { handleReleases, handleYears } from '../handlers/releases.js';
+import { handleReleases, handleYears, handleGenres } from '../handlers/releases.js';
 
 const app = new Hono<HonoEnv>();
 
@@ -41,6 +41,7 @@ app.get('/api/sync/status', handleSyncStatus);
 // Release routes
 app.get('/api/releases', handleReleases);
 app.get('/api/releases/years', handleYears);
+app.get('/api/releases/genres', handleGenres);
 
 // Error handler
 app.onError((err, c) => {

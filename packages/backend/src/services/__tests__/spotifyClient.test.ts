@@ -28,8 +28,8 @@ describe('spotifyClient', () => {
         json: vi.fn().mockResolvedValue({
           artists: {
             items: [
-              { id: 'a1', name: 'Artist 1' },
-              { id: 'a2', name: 'Artist 2' },
+              { id: 'a1', name: 'Artist 1', genres: ['rock'] },
+              { id: 'a2', name: 'Artist 2', genres: ['pop'] },
             ],
             next: null,
             cursors: { after: null },
@@ -41,8 +41,8 @@ describe('spotifyClient', () => {
       const result = await getFollowedArtists('token123');
 
       expect(result).toEqual([
-        { id: 'a1', name: 'Artist 1' },
-        { id: 'a2', name: 'Artist 2' },
+        { id: 'a1', name: 'Artist 1', genres: ['rock'] },
+        { id: 'a2', name: 'Artist 2', genres: ['pop'] },
       ]);
       expect(gotGetMock).toHaveBeenCalledOnce();
       expect(gotGetMock.mock.calls[0]![0]).toContain('type=artist');
@@ -57,7 +57,7 @@ describe('spotifyClient', () => {
         .mockReturnValueOnce({
           json: vi.fn().mockResolvedValue({
             artists: {
-              items: [{ id: 'a1', name: 'Artist 1' }],
+              items: [{ id: 'a1', name: 'Artist 1', genres: ['rock'] }],
               next: 'https://next',
               cursors: { after: 'cursor1' },
               total: 2,
@@ -67,7 +67,7 @@ describe('spotifyClient', () => {
         .mockReturnValueOnce({
           json: vi.fn().mockResolvedValue({
             artists: {
-              items: [{ id: 'a2', name: 'Artist 2' }],
+              items: [{ id: 'a2', name: 'Artist 2', genres: ['pop'] }],
               next: null,
               cursors: { after: null },
               total: 2,
@@ -139,7 +139,7 @@ describe('spotifyClient', () => {
               release_date: '2024-01-15',
               images: [{ url: 'https://img.com/1.jpg' }],
               external_urls: { spotify: 'https://open.spotify.com/album/alb1' },
-              artists: [{ id: 'a1', name: 'Artist 1' }],
+              artists: [{ id: 'a1', name: 'Artist 1', genres: ['rock'] }],
             },
           ],
           next: null,

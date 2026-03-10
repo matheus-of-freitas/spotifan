@@ -1,5 +1,10 @@
 import type { Context } from 'hono';
-import { queryUserReleases, queryAllUserReleases, getYearsIndex } from '../db/releases.js';
+import {
+  queryUserReleases,
+  queryAllUserReleases,
+  getYearsIndex,
+  getGenresIndex,
+} from '../db/releases.js';
 import type { HonoEnv } from '../lib/honoTypes.js';
 
 type SortField = 'date' | 'artist' | 'title';
@@ -27,10 +32,14 @@ export async function handleReleases(c: Context<HonoEnv>): Promise<Response> {
   const startDate = startDateParam && DATE_RE.test(startDateParam) ? startDateParam : undefined;
   const endDate = endDateParam && DATE_RE.test(endDateParam) ? endDateParam : undefined;
 
+  const genresParam = c.req.query('genres');
+  const genres = genresParam ? genresParam.split(',').filter(Boolean) : undefined;
+
   if (sort === 'date') {
     const result = await queryUserReleases(spotifyId, {
       year,
       albumType,
+      genres,
       startDate,
       endDate,
       cursor,
@@ -72,4 +81,10 @@ export async function handleYears(c: Context<HonoEnv>): Promise<Response> {
   const spotifyId = c.get('spotifyId');
   const years = await getYearsIndex(spotifyId);
   return c.json({ years });
+}
+
+export async function handleGenres(c: Context<HonoEnv>): Promise<Response> {
+  const spotifyId = c.get('spotifyId');
+  const genres = await getGenresIndex(spotifyId);
+  return c.json({ genres });
 }

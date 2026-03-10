@@ -30,6 +30,8 @@ import {
   queryAllUserReleases,
   getYearsIndex,
   putYearsIndex,
+  getGenresIndex,
+  putGenresIndex,
   type Release,
 } from '../releases.js';
 
@@ -44,6 +46,7 @@ function makeRelease(overrides: Partial<Release> = {}): Release {
     spotifyUrl: 'https://open.spotify.com/album/album1',
     releaseDate: '2024-01-15',
     year: '2024',
+    genres: ['rock', 'indie'],
     ...overrides,
   };
 }
@@ -307,6 +310,47 @@ describe('releases', () => {
       const cmd = sendMock.mock.calls[0]![0] as QueryCommand;
       expect(cmd.input.FilterExpression).toBeUndefined();
     });
+
+    it('filters by single genre', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [] });
+
+      await queryUserReleases('user1', { genres: ['rock'] });
+
+      const cmd = sendMock.mock.calls[0]![0] as QueryCommand;
+      expect(cmd.input.FilterExpression).toBe('(contains(genres, :genre0))');
+      expect(cmd.input.ExpressionAttributeValues![':genre0']).toBe('rock');
+    });
+
+    it('filters by multiple genres with OR', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [] });
+
+      await queryUserReleases('user1', { genres: ['rock', 'indie'] });
+
+      const cmd = sendMock.mock.calls[0]![0] as QueryCommand;
+      expect(cmd.input.FilterExpression).toBe(
+        '(contains(genres, :genre0) OR contains(genres, :genre1))',
+      );
+      expect(cmd.input.ExpressionAttributeValues![':genre0']).toBe('rock');
+      expect(cmd.input.ExpressionAttributeValues![':genre1']).toBe('indie');
+    });
+
+    it('combines genre filter with album type', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [] });
+
+      await queryUserReleases('user1', { albumType: 'album', genres: ['rock'] });
+
+      const cmd = sendMock.mock.calls[0]![0] as QueryCommand;
+      expect(cmd.input.FilterExpression).toBe('albumType = :type AND (contains(genres, :genre0))');
+    });
+
+    it('ignores empty genres array', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [] });
+
+      await queryUserReleases('user1', { genres: [] });
+
+      const cmd = sendMock.mock.calls[0]![0] as QueryCommand;
+      expect(cmd.input.FilterExpression).toBeUndefined();
+    });
   });
 
   describe('queryAllUserReleases', () => {
@@ -395,6 +439,41 @@ describe('releases', () => {
         PK: 'USER#user1',
         SK: 'YEARS#INDEX',
         years: ['2024', '2023'],
+      });
+    });
+  });
+
+  describe('getGenresIndex', () => {
+    it('returns genres when index exists', async () => {
+      sendMock.mockResolvedValueOnce({
+        Item: { genres: ['rock', 'indie', 'pop'] },
+      });
+
+      const result = await getGenresIndex('user1');
+
+      expect(result).toEqual(['rock', 'indie', 'pop']);
+    });
+
+    it('returns empty array when index does not exist', async () => {
+      sendMock.mockResolvedValueOnce({ Item: undefined });
+
+      const result = await getGenresIndex('user1');
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('putGenresIndex', () => {
+    it('writes genres with correct PK/SK GENRES#INDEX', async () => {
+      sendMock.mockResolvedValueOnce({});
+
+      await putGenresIndex('user1', ['rock', 'indie']);
+
+      const cmd = sendMock.mock.calls[0]![0] as PutCommand;
+      expect(cmd.input.Item).toEqual({
+        PK: 'USER#user1',
+        SK: 'GENRES#INDEX',
+        genres: ['rock', 'indie'],
       });
     });
   });

@@ -5,6 +5,7 @@ import { Header } from '../components/layout/Header';
 import { YearFilter } from '../components/releases/YearFilter';
 import { SortDropdown } from '../components/releases/SortDropdown';
 import { DateRangeFilter } from '../components/releases/DateRangeFilter';
+import { GenreFilter } from '../components/releases/GenreFilter';
 import { ReleaseGrid } from '../components/releases/ReleaseGrid';
 import { SyncProgress } from '../components/sync/SyncProgress';
 
@@ -41,6 +42,7 @@ function HomePage() {
             <YearFilter />
             <SortDropdown />
             <DateRangeFilter />
+            <GenreFilter />
           </div>
           <SyncProgress />
         </div>

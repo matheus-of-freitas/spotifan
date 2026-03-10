@@ -22,7 +22,7 @@ vi.mock('@aws-sdk/lib-dynamodb', async () => {
   };
 });
 
-import { handleReleases, handleYears } from '../releases.js';
+import { handleReleases, handleYears, handleGenres } from '../releases.js';
 import type { HonoEnv } from '../../lib/honoTypes.js';
 
 function createApp() {
@@ -37,6 +37,7 @@ function createApp() {
 
   app.get('/api/releases', handleReleases);
   app.get('/api/releases/years', handleYears);
+  app.get('/api/releases/genres', handleGenres);
 
   return app;
 }
@@ -372,6 +373,22 @@ describe('releases handlers', () => {
       const queryInput = sendMock.mock.calls[0]![0].input;
       expect(queryInput.FilterExpression).toBeUndefined();
     });
+
+    it('passes genres filter to query', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [], LastEvaluatedKey: undefined });
+
+      const app = createApp();
+      await app.request('/api/releases?genres=rock,pop', {
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      const queryInput = sendMock.mock.calls[0]![0].input;
+      expect(queryInput.FilterExpression).toBe(
+        '(contains(genres, :genre0) OR contains(genres, :genre1))',
+      );
+      expect(queryInput.ExpressionAttributeValues[':genre0']).toBe('rock');
+      expect(queryInput.ExpressionAttributeValues[':genre1']).toBe('pop');
+    });
   });
 
   describe('GET /api/releases/years', () => {
@@ -401,6 +418,36 @@ describe('releases handlers', () => {
       expect(res.status).toBe(200);
       const body = (await res.json()) as { years: string[] };
       expect(body.years).toEqual([]);
+    });
+  });
+
+  describe('GET /api/releases/genres', () => {
+    it('returns genres index', async () => {
+      sendMock.mockResolvedValueOnce({
+        Item: { genres: ['indie', 'pop', 'rock'] },
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/releases/genres', {
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { genres: string[] };
+      expect(body.genres).toEqual(['indie', 'pop', 'rock']);
+    });
+
+    it('returns empty array when no genres index exists', async () => {
+      sendMock.mockResolvedValueOnce({ Item: undefined });
+
+      const app = createApp();
+      const res = await app.request('/api/releases/genres', {
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { genres: string[] };
+      expect(body.genres).toEqual([]);
     });
   });
 });

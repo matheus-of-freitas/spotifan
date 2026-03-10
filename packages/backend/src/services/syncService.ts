@@ -7,6 +7,7 @@ import {
   getUserExistingAlbumIds,
   getYearsIndex,
   putYearsIndex,
+  putGenresIndex,
 } from '../db/releases.js';
 import { putSyncStatus } from '../db/sync.js';
 import { updateSyncStatus } from '../db/users.js';
@@ -15,7 +16,12 @@ import type { SpotifyAlbum } from './spotifyClient.js';
 
 const CONCURRENCY = 5;
 
-function albumToRelease(album: SpotifyAlbum, artistId: string, artistName: string): Release {
+function albumToRelease(
+  album: SpotifyAlbum,
+  artistId: string,
+  artistName: string,
+  genres: string[],
+): Release {
   const year = album.release_date.slice(0, 4);
   return {
     albumId: album.id,
@@ -27,6 +33,7 @@ function albumToRelease(album: SpotifyAlbum, artistId: string, artistName: strin
     spotifyUrl: album.external_urls.spotify,
     releaseDate: album.release_date,
     year,
+    genres,
   };
 }
 
@@ -75,9 +82,14 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
     const existingAlbumIds = await getUserExistingAlbumIds(spotifyId);
     const seenAlbumIds = new Set<string>(existingAlbumIds);
     const allYears = new Set<string>();
+    const allGenres = new Set<string>();
     let processedCount = 0;
 
     await processBatch(artists, CONCURRENCY, async (artist) => {
+      for (const g of artist.genres) {
+        allGenres.add(g);
+      }
+
       // Check shared artist cache first
       let releases = await getArtistReleasesCached(artist.id);
 
@@ -85,7 +97,7 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
         // Fetch fresh from Spotify
         const freshToken = await getValidAccessToken(spotifyId);
         const albums = await getArtistAlbums(freshToken, artist.id);
-        releases = albums.map((a) => albumToRelease(a, artist.id, artist.name));
+        releases = albums.map((a) => albumToRelease(a, artist.id, artist.name, artist.genres));
 
         // Write to shared artist cache
         if (releases.length > 0) {
@@ -132,6 +144,9 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
     }
     const sortedYears = Array.from(allYears).sort().reverse();
     await putYearsIndex(spotifyId, sortedYears);
+
+    const sortedGenres = Array.from(allGenres).sort();
+    await putGenresIndex(spotifyId, sortedGenres);
 
     await putSyncStatus(spotifyId, {
       status: 'done',

@@ -8,6 +8,7 @@ export interface Release {
   spotifyUrl: string;
   releaseDate: string;
   year: string;
+  genres: string[];
 }
 
 interface ReleasesPage {
@@ -37,12 +38,14 @@ export async function fetchReleases(params: {
   limit?: number;
   sort?: string;
   dateRange?: string;
+  genres?: string[];
 }): Promise<ReleasesPage> {
   const search = new URLSearchParams();
   if (params.year) search.set('year', params.year);
   if (params.cursor) search.set('cursor', params.cursor);
   if (params.limit) search.set('limit', String(params.limit));
   if (params.sort) search.set('sort', params.sort);
+  if (params.genres && params.genres.length > 0) search.set('genres', params.genres.join(','));
 
   if (params.dateRange) {
     const range = computeDateRange(params.dateRange);
@@ -55,6 +58,13 @@ export async function fetchReleases(params: {
   const res = await fetch(`/api/releases?${search}`);
   if (!res.ok) throw new Error('Failed to fetch releases');
   return res.json();
+}
+
+export async function fetchGenres(): Promise<string[]> {
+  const res = await fetch('/api/releases/genres');
+  if (!res.ok) throw new Error('Failed to fetch genres');
+  const data: { genres: string[] } = await res.json();
+  return data.genres;
 }
 
 export async function fetchYears(): Promise<string[]> {

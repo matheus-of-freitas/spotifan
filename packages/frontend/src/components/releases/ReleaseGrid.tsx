@@ -8,16 +8,18 @@ export function ReleaseGrid() {
   const year = useFilterStore((s) => s.year);
   const sort = useFilterStore((s) => s.sort);
   const dateRange = useFilterStore((s) => s.dateRange);
+  const genres = useFilterStore((s) => s.genres);
   const observerRef = useRef<HTMLDivElement>(null);
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery({
-    queryKey: ['releases', { year, sort, dateRange }],
+    queryKey: ['releases', { year, sort, dateRange, genres }],
     queryFn: ({ pageParam }) =>
       fetchReleases({
         year: year ?? undefined,
         cursor: pageParam as string | undefined,
         sort,
         dateRange: dateRange ?? undefined,
+        genres: genres.length > 0 ? genres : undefined,
       }),
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     initialPageParam: undefined as string | undefined,
