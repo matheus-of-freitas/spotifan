@@ -86,7 +86,8 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
     let processedCount = 0;
 
     await processBatch(artists, CONCURRENCY, async (artist) => {
-      for (const g of artist.genres) {
+      const genres = artist.genres ?? [];
+      for (const g of genres) {
         allGenres.add(g);
       }
 
@@ -97,7 +98,7 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
         // Fetch fresh from Spotify
         const freshToken = await getValidAccessToken(spotifyId);
         const albums = await getArtistAlbums(freshToken, artist.id);
-        releases = albums.map((a) => albumToRelease(a, artist.id, artist.name, artist.genres));
+        releases = albums.map((a) => albumToRelease(a, artist.id, artist.name, genres));
 
         // Write to shared artist cache
         if (releases.length > 0) {

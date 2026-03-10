@@ -141,6 +141,18 @@ describe('syncService', () => {
     expect(putGenresIndexMock).toHaveBeenCalledWith('user1', ['indie', 'pop', 'rock']);
   });
 
+  it('handles artists with missing genres gracefully', async () => {
+    getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: undefined }]);
+    getArtistReleasesCachedMock.mockResolvedValue(null);
+    getArtistAlbumsMock.mockResolvedValue([makeAlbum('alb1', 'Album', '2024-01-01', 'a1', 'A')]);
+
+    await runSync('user1', 'full');
+
+    expect(putGenresIndexMock).toHaveBeenCalledWith('user1', []);
+    const userReleases = batchWriteUserReleasesMock.mock.calls[0]![1] as { genres: string[] }[];
+    expect(userReleases[0].genres).toEqual([]);
+  });
+
   it('uses cached artist releases when available', async () => {
     getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
     getArtistReleasesCachedMock.mockResolvedValue([
