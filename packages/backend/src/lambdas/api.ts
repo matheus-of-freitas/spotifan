@@ -4,6 +4,7 @@ import { AppError } from '../lib/errors.js';
 import type { HonoEnv } from '../lib/honoTypes.js';
 import { handleLogin, handleCallback, handleLogout, handleMe } from '../handlers/auth.js';
 import { handleSync, handleSyncStatus } from '../handlers/sync.js';
+import { handleReleases, handleYears } from '../handlers/releases.js';
 
 const app = new Hono<HonoEnv>();
 
@@ -34,6 +35,10 @@ app.get('/api/auth/me', handleMe);
 // Sync routes
 app.post('/api/sync', handleSync);
 app.get('/api/sync/status', handleSyncStatus);
+
+// Release routes
+app.get('/api/releases', handleReleases);
+app.get('/api/releases/years', handleYears);
 
 // Error handler
 app.onError((err, c) => {
