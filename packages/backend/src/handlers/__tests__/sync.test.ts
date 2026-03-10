@@ -192,7 +192,9 @@ describe('sync handlers', () => {
           updatedAt: Date.now() - 20 * 60 * 1000,
         },
       });
-      // updateSyncStatus (reset to error)
+      // updateSyncStatus (reset user metadata to error)
+      sendMock.mockResolvedValueOnce({});
+      // putSyncStatus (reset SYNC#CURRENT to error)
       sendMock.mockResolvedValueOnce({});
 
       const app = createApp();
@@ -414,8 +416,8 @@ describe('sync handlers', () => {
         syncType: 'quick',
         totalArtists: 100,
         processedArtists: 42,
-        startedAt: 1700000000000,
-        updatedAt: 1700000001000,
+        startedAt: Date.now() - 60_000, // 1 minute ago (not stale)
+        updatedAt: Date.now(),
       };
       sendMock.mockResolvedValueOnce({ Item: syncStatus });
 
@@ -427,6 +429,56 @@ describe('sync handlers', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body).toEqual(syncStatus);
+    });
+
+    it('resets stale running sync to error on status poll', async () => {
+      const staleStatus = {
+        status: 'running',
+        syncType: 'quick',
+        totalArtists: 100,
+        processedArtists: 42,
+        startedAt: Date.now() - 25 * 60 * 1000, // 25 minutes ago
+        updatedAt: Date.now() - 20 * 60 * 1000,
+      };
+      // getSyncStatus
+      sendMock.mockResolvedValueOnce({ Item: staleStatus });
+      // putSyncStatus (reset SYNC#CURRENT)
+      sendMock.mockResolvedValueOnce({});
+      // updateSyncStatus (reset user metadata)
+      sendMock.mockResolvedValueOnce({});
+
+      const app = createApp();
+      const res = await app.request('/api/sync/status', {
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { status: string; errorMessage: string };
+      expect(body.status).toBe('error');
+      expect(body.errorMessage).toBe('Sync timed out');
+    });
+
+    it('returns recent running sync without resetting', async () => {
+      const recentStatus = {
+        status: 'running',
+        syncType: 'quick',
+        totalArtists: 100,
+        processedArtists: 42,
+        startedAt: Date.now() - 5 * 60 * 1000, // 5 minutes ago
+        updatedAt: Date.now(),
+      };
+      sendMock.mockResolvedValueOnce({ Item: recentStatus });
+
+      const app = createApp();
+      const res = await app.request('/api/sync/status', {
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { status: string };
+      expect(body.status).toBe('running');
+      // Should not have called putSyncStatus or updateSyncStatus
+      expect(sendMock).toHaveBeenCalledTimes(1);
     });
   });
 });

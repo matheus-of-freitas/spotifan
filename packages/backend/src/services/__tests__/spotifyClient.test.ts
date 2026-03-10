@@ -49,6 +49,7 @@ describe('spotifyClient', () => {
       expect(gotGetMock.mock.calls[0]![0]).toContain('limit=50');
       expect(gotGetMock.mock.calls[0]![1]).toEqual({
         headers: { Authorization: 'Bearer token123' },
+        timeout: { request: 30_000 },
       });
     });
 
@@ -152,7 +153,7 @@ describe('spotifyClient', () => {
       expect(result).toHaveLength(1);
       expect(result[0]!.id).toBe('alb1');
       expect(gotGetMock.mock.calls[0]![0]).toContain('include_groups=album');
-      expect(gotGetMock.mock.calls[0]![0]).toContain('limit=10');
+      expect(gotGetMock.mock.calls[0]![0]).toContain('limit=50');
     });
 
     it('paginates through multiple pages', async () => {
@@ -196,7 +197,7 @@ describe('spotifyClient', () => {
 
       expect(result).toHaveLength(2);
       expect(gotGetMock).toHaveBeenCalledTimes(2);
-      expect(gotGetMock.mock.calls[1]![0]).toContain('offset=10');
+      expect(gotGetMock.mock.calls[1]![0]).toContain('offset=50');
     });
 
     it('throws TooManyRequestsError on 429 with default retry-after', async () => {

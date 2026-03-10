@@ -2,6 +2,8 @@ import got from 'got';
 import { withRetry } from '../lib/retry.js';
 import { AppError, TooManyRequestsError } from '../lib/errors.js';
 
+const REQUEST_TIMEOUT_MS = 30_000;
+
 interface SpotifyArtist {
   id: string;
   name: string;
@@ -66,6 +68,7 @@ export async function getFollowedArtists(accessToken: string): Promise<SpotifyAr
         return await got
           .get(`https://api.spotify.com/v1/me/following?${params}`, {
             headers: { Authorization: `Bearer ${accessToken}` },
+            timeout: { request: REQUEST_TIMEOUT_MS },
           })
           .json<SpotifyFollowedArtistsResponse>();
       } catch (err) {
@@ -86,7 +89,7 @@ export async function getArtistAlbums(
 ): Promise<SpotifyAlbum[]> {
   const albums: SpotifyAlbum[] = [];
   let offset = 0;
-  const limit = 10;
+  const limit = 50;
   let hasMore = true;
 
   while (hasMore) {
@@ -101,6 +104,7 @@ export async function getArtistAlbums(
         return await got
           .get(`https://api.spotify.com/v1/artists/${artistId}/albums?${params}`, {
             headers: { Authorization: `Bearer ${accessToken}` },
+            timeout: { request: REQUEST_TIMEOUT_MS },
           })
           .json<SpotifyAlbumsResponse>();
       } catch (err) {

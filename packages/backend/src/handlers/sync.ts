@@ -1,6 +1,6 @@
 import type { Context } from 'hono';
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
-import { getSyncStatus } from '../db/sync.js';
+import { getSyncStatus, putSyncStatus } from '../db/sync.js';
 import { getUser } from '../db/users.js';
 import { updateSyncStatus } from '../db/users.js';
 import { AppError } from '../lib/errors.js';
@@ -36,6 +36,13 @@ export async function handleSync(c: Context<HonoEnv>): Promise<Response> {
 
     if (isStale) {
       await updateSyncStatus(spotifyId, 'error');
+      if (syncStatus) {
+        await putSyncStatus(spotifyId, {
+          ...syncStatus,
+          status: 'error',
+          errorMessage: 'Sync timed out',
+        });
+      }
     } else {
       throw new AppError(409, 'Sync already in progress');
     }
@@ -73,6 +80,13 @@ export async function handleSyncStatus(c: Context<HonoEnv>): Promise<Response> {
       totalArtists: 0,
       processedArtists: 0,
     });
+  }
+
+  if (status.status === 'running' && Date.now() - status.startedAt > STALE_SYNC_MS) {
+    const errorStatus = { ...status, status: 'error' as const, errorMessage: 'Sync timed out' };
+    await putSyncStatus(spotifyId, errorStatus);
+    await updateSyncStatus(spotifyId, 'error');
+    return c.json(errorStatus);
   }
 
   return c.json(status);

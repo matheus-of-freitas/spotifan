@@ -66,4 +66,38 @@ describe('retry', () => {
     await expect(withRetry(fn)).rejects.toThrow(error);
     expect(fn).toHaveBeenCalledOnce();
   });
+
+  it('retries on ETIMEDOUT network error', async () => {
+    const error = Object.assign(new Error('Timeout'), { code: 'ETIMEDOUT' });
+    const fn = vi.fn().mockRejectedValueOnce(error).mockResolvedValue('ok');
+
+    const result = await withRetry(fn, 3);
+    expect(result).toBe('ok');
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries on ECONNRESET network error', async () => {
+    const error = Object.assign(new Error('Connection reset'), { code: 'ECONNRESET' });
+    const fn = vi.fn().mockRejectedValueOnce(error).mockResolvedValue('ok');
+
+    const result = await withRetry(fn, 3);
+    expect(result).toBe('ok');
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws after max attempts on network error', async () => {
+    const error = Object.assign(new Error('Timeout'), { code: 'ETIMEDOUT' });
+    const fn = vi.fn().mockRejectedValue(error);
+
+    await expect(withRetry(fn, 2)).rejects.toThrow(error);
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry unknown error codes', async () => {
+    const error = Object.assign(new Error('Unknown'), { code: 'EUNKNOWN' });
+    const fn = vi.fn().mockRejectedValue(error);
+
+    await expect(withRetry(fn)).rejects.toThrow(error);
+    expect(fn).toHaveBeenCalledOnce();
+  });
 });
