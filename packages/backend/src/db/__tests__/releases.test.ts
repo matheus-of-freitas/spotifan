@@ -27,6 +27,7 @@ import {
   getArtistReleasesCached,
   getUserExistingAlbumIds,
   queryUserReleases,
+  queryAllUserReleases,
   getYearsIndex,
   putYearsIndex,
   type Release,
@@ -305,6 +306,61 @@ describe('releases', () => {
 
       const cmd = sendMock.mock.calls[0]![0] as QueryCommand;
       expect(cmd.input.FilterExpression).toBeUndefined();
+    });
+  });
+
+  describe('queryAllUserReleases', () => {
+    it('returns all releases across multiple pages', async () => {
+      sendMock
+        .mockResolvedValueOnce({
+          Items: [makeRelease({ albumId: 'a1' }), makeRelease({ albumId: 'a2' })],
+          LastEvaluatedKey: { PK: 'USER#user1', SK: 'RELEASE#2024#2024-01-15#a2' },
+        })
+        .mockResolvedValueOnce({
+          Items: [makeRelease({ albumId: 'a3' })],
+          LastEvaluatedKey: undefined,
+        });
+
+      const result = await queryAllUserReleases('user1', {});
+
+      expect(result).toHaveLength(3);
+      expect(result.map((r) => r.albumId)).toEqual(['a1', 'a2', 'a3']);
+      expect(sendMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns empty array when no releases exist', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [], LastEvaluatedKey: undefined });
+
+      const result = await queryAllUserReleases('user1', {});
+
+      expect(result).toEqual([]);
+    });
+
+    it('filters by year', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [], LastEvaluatedKey: undefined });
+
+      await queryAllUserReleases('user1', { year: '2024' });
+
+      const cmd = sendMock.mock.calls[0]![0] as QueryCommand;
+      expect(cmd.input.ExpressionAttributeValues![':prefix']).toBe('RELEASE#2024');
+    });
+
+    it('filters by album type', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [], LastEvaluatedKey: undefined });
+
+      await queryAllUserReleases('user1', { albumType: 'album' });
+
+      const cmd = sendMock.mock.calls[0]![0] as QueryCommand;
+      expect(cmd.input.FilterExpression).toBe('albumType = :type');
+      expect(cmd.input.ExpressionAttributeValues![':type']).toBe('album');
+    });
+
+    it('handles undefined Items', async () => {
+      sendMock.mockResolvedValueOnce({ Items: undefined, LastEvaluatedKey: undefined });
+
+      const result = await queryAllUserReleases('user1', {});
+
+      expect(result).toEqual([]);
     });
   });
 

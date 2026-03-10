@@ -35,12 +35,14 @@ export async function fetchReleases(params: {
   year?: string;
   cursor?: string;
   limit?: number;
+  sort?: string;
   dateRange?: string;
 }): Promise<ReleasesPage> {
   const search = new URLSearchParams();
   if (params.year) search.set('year', params.year);
   if (params.cursor) search.set('cursor', params.cursor);
   if (params.limit) search.set('limit', String(params.limit));
+  if (params.sort) search.set('sort', params.sort);
 
   if (params.dateRange) {
     const range = computeDateRange(params.dateRange);

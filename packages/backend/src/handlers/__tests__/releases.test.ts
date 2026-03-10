@@ -136,6 +136,203 @@ describe('releases handlers', () => {
       expect(decoded).toEqual(lastKey);
     });
 
+    it('sorts by artist name with in-memory sort', async () => {
+      // queryAllUserReleases pages through all results
+      sendMock.mockResolvedValueOnce({
+        Items: [
+          {
+            albumId: 'alb2',
+            title: 'B Album',
+            artistId: 'a2',
+            artistName: 'Zed',
+            albumType: 'album',
+            imageUrl: '',
+            spotifyUrl: '',
+            releaseDate: '2024-01-01',
+            year: '2024',
+          },
+          {
+            albumId: 'alb1',
+            title: 'A Album',
+            artistId: 'a1',
+            artistName: 'Alpha',
+            albumType: 'album',
+            imageUrl: '',
+            spotifyUrl: '',
+            releaseDate: '2024-06-01',
+            year: '2024',
+          },
+        ],
+        LastEvaluatedKey: undefined,
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/releases?sort=artist', {
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { items: { artistName: string }[] };
+      expect(body.items[0]!.artistName).toBe('Alpha');
+      expect(body.items[1]!.artistName).toBe('Zed');
+    });
+
+    it('sorts by title with in-memory sort', async () => {
+      sendMock.mockResolvedValueOnce({
+        Items: [
+          {
+            albumId: 'alb2',
+            title: 'Zebra',
+            artistId: 'a1',
+            artistName: 'Artist',
+            albumType: 'album',
+            imageUrl: '',
+            spotifyUrl: '',
+            releaseDate: '2024-01-01',
+            year: '2024',
+          },
+          {
+            albumId: 'alb1',
+            title: 'Alpha',
+            artistId: 'a1',
+            artistName: 'Artist',
+            albumType: 'album',
+            imageUrl: '',
+            spotifyUrl: '',
+            releaseDate: '2024-06-01',
+            year: '2024',
+          },
+        ],
+        LastEvaluatedKey: undefined,
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/releases?sort=title', {
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { items: { title: string }[] };
+      expect(body.items[0]!.title).toBe('Alpha');
+      expect(body.items[1]!.title).toBe('Zebra');
+    });
+
+    it('defaults invalid sort to date', async () => {
+      sendMock.mockResolvedValueOnce({
+        Items: [{ albumId: 'alb1' }],
+        LastEvaluatedKey: undefined,
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/releases?sort=invalid', {
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(200);
+      // date sort uses queryUserReleases (single DB call with Limit)
+      const cmd = sendMock.mock.calls[0]![0].input;
+      expect(cmd.Limit).toBe(50); // queryUserReleases sets Limit
+    });
+
+    it('handles offset cursor pagination for artist sort', async () => {
+      const items = Array.from({ length: 5 }, (_, i) => ({
+        albumId: `alb${i}`,
+        title: `Album ${i}`,
+        artistId: `a${i}`,
+        artistName: `Artist ${String.fromCharCode(65 + i)}`,
+        albumType: 'album',
+        imageUrl: '',
+        spotifyUrl: '',
+        releaseDate: '2024-01-01',
+        year: '2024',
+      }));
+      sendMock.mockResolvedValueOnce({ Items: items, LastEvaluatedKey: undefined });
+
+      const cursor = Buffer.from(JSON.stringify({ offset: 2 })).toString('base64url');
+      const app = createApp();
+      const res = await app.request(`/api/releases?sort=artist&cursor=${cursor}&limit=2`, {
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        items: { artistName: string }[];
+        nextCursor?: string;
+      };
+      expect(body.items).toHaveLength(2);
+      expect(body.items[0]!.artistName).toBe('Artist C');
+      expect(body.nextCursor).toBeDefined();
+    });
+
+    it('handles invalid cursor gracefully for artist sort', async () => {
+      sendMock.mockResolvedValueOnce({
+        Items: [
+          {
+            albumId: 'alb1',
+            title: 'Album',
+            artistId: 'a1',
+            artistName: 'Artist',
+            albumType: 'album',
+            imageUrl: '',
+            spotifyUrl: '',
+            releaseDate: '2024-01-01',
+            year: '2024',
+          },
+        ],
+        LastEvaluatedKey: undefined,
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/releases?sort=artist&cursor=not-valid-base64', {
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { items: { albumId: string }[] };
+      expect(body.items).toHaveLength(1);
+    });
+
+    it('defaults offset to 0 when cursor has no offset field', async () => {
+      sendMock.mockResolvedValueOnce({
+        Items: [
+          {
+            albumId: 'alb1',
+            title: 'Album',
+            artistId: 'a1',
+            artistName: 'Artist',
+            albumType: 'album',
+            imageUrl: '',
+            spotifyUrl: '',
+            releaseDate: '2024-01-01',
+            year: '2024',
+          },
+        ],
+        LastEvaluatedKey: undefined,
+      });
+
+      const cursor = Buffer.from(JSON.stringify({})).toString('base64url');
+      const app = createApp();
+      const res = await app.request(`/api/releases?sort=artist&cursor=${cursor}`, {
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { items: { albumId: string }[] };
+      expect(body.items).toHaveLength(1);
+    });
+
+    it('combines sort with year filter', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [], LastEvaluatedKey: undefined });
+
+      const app = createApp();
+      await app.request('/api/releases?sort=artist&year=2024', {
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      const cmd = sendMock.mock.calls[0]![0].input;
+      expect(cmd.ExpressionAttributeValues[':prefix']).toBe('RELEASE#2024');
+    });
+
     it('passes cursor to ExclusiveStartKey', async () => {
       const startKey = { PK: 'USER#user1', SK: 'RELEASE#2024#2024-01-01#alb1' };
       const cursor = Buffer.from(JSON.stringify(startKey)).toString('base64url');
