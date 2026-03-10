@@ -1,11 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchSyncStatus, triggerSync } from '../../api/sync';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export function SyncProgress() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const wasRunningRef = useRef(false);
 
   const { data: status } = useQuery({
     queryKey: ['sync', 'status'],
@@ -15,6 +16,15 @@ export function SyncProgress() {
       return currentStatus === 'running' ? 2000 : false;
     },
   });
+
+  useEffect(() => {
+    if (status?.status === 'running') {
+      wasRunningRef.current = true;
+    } else if (wasRunningRef.current && (status?.status === 'done' || status?.status === 'idle')) {
+      wasRunningRef.current = false;
+      void queryClient.invalidateQueries({ queryKey: ['releases'] });
+    }
+  }, [status?.status, queryClient]);
 
   const handleSync = async () => {
     setSyncError(null);
