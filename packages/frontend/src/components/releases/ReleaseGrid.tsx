@@ -7,15 +7,17 @@ import { ReleaseCard } from './ReleaseCard';
 export function ReleaseGrid() {
   const year = useFilterStore((s) => s.year);
   const sort = useFilterStore((s) => s.sort);
+  const dateRange = useFilterStore((s) => s.dateRange);
   const observerRef = useRef<HTMLDivElement>(null);
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery({
-    queryKey: ['releases', { year, sort }],
+    queryKey: ['releases', { year, sort, dateRange }],
     queryFn: ({ pageParam }) =>
       fetchReleases({
         year: year ?? undefined,
         cursor: pageParam as string | undefined,
         sort,
+        dateRange: dateRange ?? undefined,
       }),
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     initialPageParam: undefined as string | undefined,

@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { Header } from '../components/layout/Header';
 import { YearFilter } from '../components/releases/YearFilter';
 import { SortDropdown } from '../components/releases/SortDropdown';
+import { DateRangeFilter } from '../components/releases/DateRangeFilter';
 import { ReleaseGrid } from '../components/releases/ReleaseGrid';
 import { SyncProgress } from '../components/sync/SyncProgress';
 
@@ -36,9 +37,10 @@ function HomePage() {
       <Header />
       <main className="mx-auto max-w-7xl px-6 py-6">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <YearFilter />
             <SortDropdown />
+            <DateRangeFilter />
           </div>
           <SyncProgress />
         </div>

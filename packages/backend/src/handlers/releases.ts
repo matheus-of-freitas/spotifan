@@ -11,6 +11,8 @@ function parseSort(value: string | undefined): SortField {
   return 'date';
 }
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export async function handleReleases(c: Context<HonoEnv>): Promise<Response> {
   const spotifyId = c.get('spotifyId');
   const year = c.req.query('year');
@@ -20,10 +22,17 @@ export async function handleReleases(c: Context<HonoEnv>): Promise<Response> {
   const limit = limitParam ? Number(limitParam) : undefined;
   const sort = parseSort(c.req.query('sort'));
 
+  const startDateParam = c.req.query('startDate');
+  const endDateParam = c.req.query('endDate');
+  const startDate = startDateParam && DATE_RE.test(startDateParam) ? startDateParam : undefined;
+  const endDate = endDateParam && DATE_RE.test(endDateParam) ? endDateParam : undefined;
+
   if (sort === 'date') {
     const result = await queryUserReleases(spotifyId, {
       year,
       albumType,
+      startDate,
+      endDate,
       cursor,
       limit,
     });
