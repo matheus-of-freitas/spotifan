@@ -3,6 +3,7 @@ import { handle } from 'hono/aws-lambda';
 import { AppError } from '../lib/errors.js';
 import type { HonoEnv } from '../lib/honoTypes.js';
 import { handleLogin, handleCallback, handleLogout, handleMe } from '../handlers/auth.js';
+import { handleSync, handleSyncStatus } from '../handlers/sync.js';
 
 const app = new Hono<HonoEnv>();
 
@@ -29,6 +30,10 @@ app.get('/api/auth/login', handleLogin);
 app.get('/api/auth/callback', handleCallback);
 app.post('/api/auth/logout', handleLogout);
 app.get('/api/auth/me', handleMe);
+
+// Sync routes
+app.post('/api/sync', handleSync);
+app.get('/api/sync/status', handleSyncStatus);
 
 // Error handler
 app.onError((err, c) => {

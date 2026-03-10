@@ -1,0 +1,280 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const { getFollowedArtistsMock, getArtistAlbumsMock } = vi.hoisted(() => {
+  const getFollowedArtistsMock = vi.fn();
+  const getArtistAlbumsMock = vi.fn();
+  return { getFollowedArtistsMock, getArtistAlbumsMock };
+});
+
+const { getValidAccessTokenMock } = vi.hoisted(() => {
+  const getValidAccessTokenMock = vi.fn();
+  return { getValidAccessTokenMock };
+});
+
+const {
+  batchWriteUserReleasesMock,
+  batchWriteArtistReleasesMock,
+  getArtistReleasesCachedMock,
+  putYearsIndexMock,
+} = vi.hoisted(() => ({
+  batchWriteUserReleasesMock: vi.fn(),
+  batchWriteArtistReleasesMock: vi.fn(),
+  getArtistReleasesCachedMock: vi.fn(),
+  putYearsIndexMock: vi.fn(),
+}));
+
+const { putSyncStatusMock } = vi.hoisted(() => ({
+  putSyncStatusMock: vi.fn(),
+}));
+
+const { updateSyncStatusMock } = vi.hoisted(() => ({
+  updateSyncStatusMock: vi.fn(),
+}));
+
+vi.mock('../spotifyClient.js', () => ({
+  getFollowedArtists: getFollowedArtistsMock,
+  getArtistAlbums: getArtistAlbumsMock,
+}));
+
+vi.mock('../tokenService.js', () => ({
+  getValidAccessToken: getValidAccessTokenMock,
+}));
+
+vi.mock('../../db/releases.js', () => ({
+  batchWriteUserReleases: batchWriteUserReleasesMock,
+  batchWriteArtistReleases: batchWriteArtistReleasesMock,
+  getArtistReleasesCached: getArtistReleasesCachedMock,
+  putYearsIndex: putYearsIndexMock,
+}));
+
+vi.mock('../../db/sync.js', () => ({
+  putSyncStatus: putSyncStatusMock,
+}));
+
+vi.mock('../../db/users.js', () => ({
+  updateSyncStatus: updateSyncStatusMock,
+}));
+
+import { runSync } from '../syncService.js';
+
+function makeAlbum(id: string, name: string, date: string, artistId: string, artistName: string) {
+  return {
+    id,
+    name,
+    album_type: 'album',
+    release_date: date,
+    images: [{ url: `https://img/${id}.jpg` }],
+    external_urls: { spotify: `https://open.spotify.com/album/${id}` },
+    artists: [{ id: artistId, name: artistName }],
+  };
+}
+
+describe('syncService', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getValidAccessTokenMock.mockResolvedValue('access-token');
+    putSyncStatusMock.mockResolvedValue(undefined);
+    updateSyncStatusMock.mockResolvedValue(undefined);
+    batchWriteUserReleasesMock.mockResolvedValue(undefined);
+    batchWriteArtistReleasesMock.mockResolvedValue(undefined);
+    putYearsIndexMock.mockResolvedValue(undefined);
+  });
+
+  it('syncs followed artists and writes releases', async () => {
+    getFollowedArtistsMock.mockResolvedValue([
+      { id: 'a1', name: 'Artist 1' },
+    ]);
+    getArtistReleasesCachedMock.mockResolvedValue(null); // no cache
+    getArtistAlbumsMock.mockResolvedValue([
+      makeAlbum('alb1', 'Album 1', '2024-03-15', 'a1', 'Artist 1'),
+    ]);
+
+    await runSync('user1');
+
+    // Should write to artist cache
+    expect(batchWriteArtistReleasesMock).toHaveBeenCalledOnce();
+    // Should write to user namespace
+    expect(batchWriteUserReleasesMock).toHaveBeenCalledOnce();
+    const userReleases = batchWriteUserReleasesMock.mock.calls[0]![1];
+    expect(userReleases).toHaveLength(1);
+    expect(userReleases[0].albumId).toBe('alb1');
+    expect(userReleases[0].year).toBe('2024');
+
+    // Should write years index
+    expect(putYearsIndexMock).toHaveBeenCalledWith('user1', ['2024']);
+
+    // Should update sync status to done
+    expect(updateSyncStatusMock).toHaveBeenCalledWith('user1', 'done', expect.any(Number));
+  });
+
+  it('uses cached artist releases when available', async () => {
+    getFollowedArtistsMock.mockResolvedValue([
+      { id: 'a1', name: 'Artist 1' },
+    ]);
+    getArtistReleasesCachedMock.mockResolvedValue([
+      {
+        albumId: 'alb1',
+        title: 'Cached Album',
+        artistId: 'a1',
+        artistName: 'Artist 1',
+        albumType: 'album',
+        imageUrl: 'https://img/alb1.jpg',
+        spotifyUrl: 'https://open.spotify.com/album/alb1',
+        releaseDate: '2024-01-01',
+        year: '2024',
+      },
+    ]);
+
+    await runSync('user1');
+
+    // Should NOT call Spotify API for albums
+    expect(getArtistAlbumsMock).not.toHaveBeenCalled();
+    // Should NOT write to artist cache
+    expect(batchWriteArtistReleasesMock).not.toHaveBeenCalled();
+    // Should still write to user namespace
+    expect(batchWriteUserReleasesMock).toHaveBeenCalledOnce();
+  });
+
+  it('deduplicates collab albums across artists', async () => {
+    getFollowedArtistsMock.mockResolvedValue([
+      { id: 'a1', name: 'Artist 1' },
+      { id: 'a2', name: 'Artist 2' },
+    ]);
+    getArtistReleasesCachedMock.mockResolvedValue(null);
+    // Same album under both artists (collab)
+    getArtistAlbumsMock
+      .mockResolvedValueOnce([makeAlbum('collab1', 'Collab Album', '2024-06-01', 'a1', 'Artist 1')])
+      .mockResolvedValueOnce([makeAlbum('collab1', 'Collab Album', '2024-06-01', 'a2', 'Artist 2')]);
+
+    await runSync('user1');
+
+    // First artist's releases go through
+    const firstCall = batchWriteUserReleasesMock.mock.calls[0]!;
+    expect(firstCall[1]).toHaveLength(1);
+
+    // Second artist's releases should be deduped (empty → no write)
+    // batchWriteUserReleases should only be called once since second artist has 0 unique releases
+    expect(batchWriteUserReleasesMock).toHaveBeenCalledOnce();
+  });
+
+  it('handles artist with no albums', async () => {
+    getFollowedArtistsMock.mockResolvedValue([
+      { id: 'a1', name: 'Artist 1' },
+    ]);
+    getArtistReleasesCachedMock.mockResolvedValue(null);
+    getArtistAlbumsMock.mockResolvedValue([]); // no albums
+
+    await runSync('user1');
+
+    // Should not write to artist cache or user namespace
+    expect(batchWriteArtistReleasesMock).not.toHaveBeenCalled();
+    expect(batchWriteUserReleasesMock).not.toHaveBeenCalled();
+    // Should still write years index (empty)
+    expect(putYearsIndexMock).toHaveBeenCalledWith('user1', []);
+  });
+
+  it('sorts years in descending order', async () => {
+    getFollowedArtistsMock.mockResolvedValue([
+      { id: 'a1', name: 'Artist 1' },
+    ]);
+    getArtistReleasesCachedMock.mockResolvedValue(null);
+    getArtistAlbumsMock.mockResolvedValue([
+      makeAlbum('alb1', 'Old Album', '2020-01-01', 'a1', 'Artist 1'),
+      makeAlbum('alb2', 'New Album', '2024-06-15', 'a1', 'Artist 1'),
+      makeAlbum('alb3', 'Mid Album', '2022-08-10', 'a1', 'Artist 1'),
+    ]);
+
+    await runSync('user1');
+
+    expect(putYearsIndexMock).toHaveBeenCalledWith('user1', ['2024', '2022', '2020']);
+  });
+
+  it('handles album with no images gracefully', async () => {
+    getFollowedArtistsMock.mockResolvedValue([
+      { id: 'a1', name: 'Artist 1' },
+    ]);
+    getArtistReleasesCachedMock.mockResolvedValue(null);
+    getArtistAlbumsMock.mockResolvedValue([
+      {
+        id: 'alb1',
+        name: 'No Image Album',
+        album_type: 'album',
+        release_date: '2024-01-01',
+        images: [],
+        external_urls: { spotify: 'https://open.spotify.com/album/alb1' },
+        artists: [{ id: 'a1', name: 'Artist 1' }],
+      },
+    ]);
+
+    await runSync('user1');
+
+    const releases = batchWriteUserReleasesMock.mock.calls[0]![1];
+    expect(releases[0].imageUrl).toBe('');
+  });
+
+  it('sets error status on failure', async () => {
+    getFollowedArtistsMock.mockRejectedValue(new Error('API down'));
+
+    await expect(runSync('user1')).rejects.toThrow('API down');
+
+    // Should set error status
+    const lastSyncStatusCall = putSyncStatusMock.mock.calls.at(-1)![1];
+    expect(lastSyncStatusCall.status).toBe('error');
+    expect(lastSyncStatusCall.errorMessage).toBe('API down');
+
+    expect(updateSyncStatusMock).toHaveBeenCalledWith('user1', 'error');
+  });
+
+  it('sets error status with unknown message for non-Error throws', async () => {
+    getFollowedArtistsMock.mockRejectedValue('string error');
+
+    await expect(runSync('user1')).rejects.toBe('string error');
+
+    const lastSyncStatusCall = putSyncStatusMock.mock.calls.at(-1)![1];
+    expect(lastSyncStatusCall.errorMessage).toBe('Unknown error');
+  });
+
+  it('updates progress after each artist', async () => {
+    getFollowedArtistsMock.mockResolvedValue([
+      { id: 'a1', name: 'Artist 1' },
+      { id: 'a2', name: 'Artist 2' },
+    ]);
+    getArtistReleasesCachedMock.mockResolvedValue(null);
+    getArtistAlbumsMock.mockResolvedValue([
+      makeAlbum('alb1', 'Album', '2024-01-01', 'a1', 'A'),
+    ]);
+
+    await runSync('user1');
+
+    // putSyncStatus calls:
+    // 1. initial running (0/0)
+    // 2. running with totalArtists (0/2)
+    // 3. after artist 1 (1/2)
+    // 4. after artist 2 (2/2)
+    // 5. done (2/2)
+    const statusCalls = putSyncStatusMock.mock.calls.map(
+      (c: [string, { status: string; processedArtists: number; totalArtists: number }]) => ({
+        status: c[1].status,
+        processed: c[1].processedArtists,
+        total: c[1].totalArtists,
+      }),
+    );
+    expect(statusCalls[0]).toEqual({ status: 'running', processed: 0, total: 0 });
+    expect(statusCalls[1]).toEqual({ status: 'running', processed: 0, total: 2 });
+    // Due to concurrency batch (both run in same batch of 5), order may vary
+    expect(statusCalls[4]).toEqual({ status: 'done', processed: 2, total: 2 });
+  });
+
+  it('refreshes access token for each artist fetch', async () => {
+    getFollowedArtistsMock.mockResolvedValue([
+      { id: 'a1', name: 'Artist 1' },
+    ]);
+    getArtistReleasesCachedMock.mockResolvedValue(null);
+    getArtistAlbumsMock.mockResolvedValue([]);
+
+    await runSync('user1');
+
+    // getValidAccessToken called once for followed artists, once for album fetch
+    expect(getValidAccessTokenMock).toHaveBeenCalledTimes(2);
+  });
+});
