@@ -263,26 +263,69 @@ export async function putGenresIndex(spotifyId: string, genres: string[]): Promi
 }
 
 export async function putArtistsIndex(spotifyId: string, artists: CachedArtist[]): Promise<void> {
-  await docClient.send(
-    new PutCommand({
-      TableName: getTableName(),
-      Item: {
-        PK: `USER#${spotifyId}`,
-        SK: 'ARTISTS#INDEX',
-        artists,
-      },
-    }),
-  );
+  const tableName = getTableName();
+  const pk = `USER#${spotifyId}`;
+
+  // Query existing artist IDs to compute deletions (handles unfollows)
+  const existingIds = new Set<string>();
+  let lastKey: Record<string, unknown> | undefined;
+  do {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: tableName,
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :prefix)',
+        ExpressionAttributeValues: { ':pk': pk, ':prefix': 'ARTIST_FOLLOW#' },
+        ProjectionExpression: 'SK',
+        ExclusiveStartKey: lastKey,
+      }),
+    );
+    for (const item of result.Items ?? []) {
+      existingIds.add((item['SK'] as string).slice('ARTIST_FOLLOW#'.length));
+    }
+    lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (lastKey);
+
+  const newIds = new Set(artists.map((a) => a.id));
+  const toDelete = [...existingIds].filter((id) => !newIds.has(id));
+
+  const putRequests = artists.map((a) => ({
+    PutRequest: {
+      Item: { PK: pk, SK: `ARTIST_FOLLOW#${a.id}`, id: a.id, name: a.name, genres: a.genres },
+    },
+  }));
+  const deleteRequests = toDelete.map((id) => ({
+    DeleteRequest: { Key: { PK: pk, SK: `ARTIST_FOLLOW#${id}` } },
+  }));
+
+  const allRequests = [...putRequests, ...deleteRequests];
+  if (allRequests.length === 0) return;
+  for (const batch of chunk(allRequests, 25)) {
+    await docClient.send(new BatchWriteCommand({ RequestItems: { [tableName]: batch } }));
+  }
 }
 
-export async function getArtistsIndex(spotifyId: string): Promise<CachedArtist[] | null> {
-  const result = await docClient.send(
-    new GetCommand({
-      TableName: getTableName(),
-      Key: { PK: `USER#${spotifyId}`, SK: 'ARTISTS#INDEX' },
-    }),
-  );
-  return (result.Item?.['artists'] as CachedArtist[] | undefined) ?? null;
+export async function getArtistsIndex(spotifyId: string): Promise<CachedArtist[]> {
+  const artists: CachedArtist[] = [];
+  let lastKey: Record<string, unknown> | undefined;
+  do {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: getTableName(),
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :prefix)',
+        ExpressionAttributeValues: { ':pk': `USER#${spotifyId}`, ':prefix': 'ARTIST_FOLLOW#' },
+        ExclusiveStartKey: lastKey,
+      }),
+    );
+    for (const item of result.Items ?? []) {
+      artists.push({
+        id: item['id'] as string,
+        name: item['name'] as string,
+        genres: (item['genres'] as string[]) ?? [],
+      });
+    }
+    lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (lastKey);
+  return artists;
 }
 
 function chunk<T>(arr: T[], size: number): T[][] {

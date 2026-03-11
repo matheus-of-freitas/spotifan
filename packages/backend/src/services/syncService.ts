@@ -88,7 +88,7 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
       await putArtistsIndex(spotifyId, rawArtists);
       artists = rawArtists;
     } else {
-      artists = (await getArtistsIndex(spotifyId))!;
+      artists = await getArtistsIndex(spotifyId);
       log.info('Loaded artists from index', { artistCount: artists.length });
     }
 

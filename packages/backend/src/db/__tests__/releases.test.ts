@@ -482,8 +482,11 @@ describe('releases', () => {
   });
 
   describe('putArtistsIndex', () => {
-    it('writes artists with correct PK/SK and no TTL', async () => {
+    it('writes individual items with correct PK and SK per artist', async () => {
+      // First call: query existing (empty), second call: batch write
+      sendMock.mockResolvedValueOnce({ Items: [], LastEvaluatedKey: undefined });
       sendMock.mockResolvedValueOnce({});
+
       const artists: CachedArtist[] = [
         { id: 'a1', name: 'Artist 1', genres: ['rock'] },
         { id: 'a2', name: 'Artist 2', genres: ['pop', 'indie'] },
@@ -491,32 +494,143 @@ describe('releases', () => {
 
       await putArtistsIndex('user1', artists);
 
-      const cmd = sendMock.mock.calls[0]![0] as PutCommand;
-      expect(cmd.input.Item).toEqual({
-        PK: 'USER#user1',
-        SK: 'ARTISTS#INDEX',
-        artists,
+      expect(sendMock).toHaveBeenCalledTimes(2);
+      const queryCmd = sendMock.mock.calls[0]![0] as QueryCommand;
+      expect(queryCmd.input.ExpressionAttributeValues![':pk']).toBe('USER#user1');
+      expect(queryCmd.input.ExpressionAttributeValues![':prefix']).toBe('ARTIST_FOLLOW#');
+
+      const batchCmd = sendMock.mock.calls[1]![0] as BatchWriteCommand;
+      const items = batchCmd.input.RequestItems!['spotifan-test']!;
+      expect(items).toHaveLength(2);
+      expect(items[0]!.PutRequest!.Item!['PK']).toBe('USER#user1');
+      expect(items[0]!.PutRequest!.Item!['SK']).toBe('ARTIST_FOLLOW#a1');
+      expect(items[1]!.PutRequest!.Item!['SK']).toBe('ARTIST_FOLLOW#a2');
+      expect(items[0]!.PutRequest!.Item!['ttl']).toBeUndefined();
+    });
+
+    it('deletes stale artists that are no longer followed', async () => {
+      // Existing: a1, a2 — new list: a1 only → a2 should be deleted
+      sendMock.mockResolvedValueOnce({
+        Items: [{ SK: 'ARTIST_FOLLOW#a1' }, { SK: 'ARTIST_FOLLOW#a2' }],
+        LastEvaluatedKey: undefined,
       });
-      expect(cmd.input.Item!['ttl']).toBeUndefined();
+      sendMock.mockResolvedValueOnce({});
+
+      await putArtistsIndex('user1', [{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+
+      const batchCmd = sendMock.mock.calls[1]![0] as BatchWriteCommand;
+      const items = batchCmd.input.RequestItems!['spotifan-test']!;
+      expect(items).toHaveLength(2);
+      const putItems = items.filter((i) => i.PutRequest);
+      const deleteItems = items.filter((i) => i.DeleteRequest);
+      expect(putItems).toHaveLength(1);
+      expect(deleteItems).toHaveLength(1);
+      expect(deleteItems[0]!.DeleteRequest!.Key!['SK']).toBe('ARTIST_FOLLOW#a2');
+    });
+
+    it('skips BatchWrite entirely when both lists are empty', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [], LastEvaluatedKey: undefined });
+
+      await putArtistsIndex('user1', []);
+
+      expect(sendMock).toHaveBeenCalledTimes(1); // only the query
+    });
+
+    it('handles undefined Items from query', async () => {
+      // Items undefined → existingIds stays empty, no deletions needed
+      sendMock.mockResolvedValueOnce({ Items: undefined, LastEvaluatedKey: undefined });
+      sendMock.mockResolvedValueOnce({});
+
+      await putArtistsIndex('user1', [{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+
+      expect(sendMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('chunks writes into batches of 25', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [], LastEvaluatedKey: undefined });
+      sendMock.mockResolvedValue({});
+
+      const artists: CachedArtist[] = Array.from({ length: 30 }, (_, i) => ({
+        id: `a${i}`,
+        name: `Artist ${i}`,
+        genres: [],
+      }));
+
+      await putArtistsIndex('user1', artists);
+
+      // 1 query + 2 batch writes (25 + 5)
+      expect(sendMock).toHaveBeenCalledTimes(3);
+      const batch1 = sendMock.mock.calls[1]![0] as BatchWriteCommand;
+      const batch2 = sendMock.mock.calls[2]![0] as BatchWriteCommand;
+      expect(batch1.input.RequestItems!['spotifan-test']).toHaveLength(25);
+      expect(batch2.input.RequestItems!['spotifan-test']).toHaveLength(5);
     });
   });
 
   describe('getArtistsIndex', () => {
-    it('returns artists when item exists', async () => {
-      const artists: CachedArtist[] = [{ id: 'a1', name: 'Artist 1', genres: ['rock'] }];
-      sendMock.mockResolvedValueOnce({ Item: { artists } });
+    it('returns artists array from individual items', async () => {
+      sendMock.mockResolvedValueOnce({
+        Items: [
+          {
+            PK: 'USER#user1',
+            SK: 'ARTIST_FOLLOW#a1',
+            id: 'a1',
+            name: 'Artist 1',
+            genres: ['rock'],
+          },
+        ],
+        LastEvaluatedKey: undefined,
+      });
 
       const result = await getArtistsIndex('user1');
 
-      expect(result).toEqual(artists);
+      expect(result).toEqual([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
     });
 
-    it('returns null when item does not exist', async () => {
-      sendMock.mockResolvedValueOnce({ Item: undefined });
+    it('returns empty array when no items exist', async () => {
+      sendMock.mockResolvedValueOnce({ Items: [], LastEvaluatedKey: undefined });
 
       const result = await getArtistsIndex('user1');
 
-      expect(result).toBeNull();
+      expect(result).toEqual([]);
+    });
+
+    it('handles undefined Items', async () => {
+      sendMock.mockResolvedValueOnce({ Items: undefined, LastEvaluatedKey: undefined });
+
+      const result = await getArtistsIndex('user1');
+
+      expect(result).toEqual([]);
+    });
+
+    it('defaults genres to empty array when undefined', async () => {
+      sendMock.mockResolvedValueOnce({
+        Items: [{ id: 'a1', name: 'Artist 1' }],
+        LastEvaluatedKey: undefined,
+      });
+
+      const result = await getArtistsIndex('user1');
+
+      expect(result).toEqual([{ id: 'a1', name: 'Artist 1', genres: [] }]);
+    });
+
+    it('paginates across multiple pages', async () => {
+      sendMock
+        .mockResolvedValueOnce({
+          Items: [{ id: 'a1', name: 'Artist 1', genres: ['rock'] }],
+          LastEvaluatedKey: { PK: 'USER#user1', SK: 'ARTIST_FOLLOW#a1' },
+        })
+        .mockResolvedValueOnce({
+          Items: [{ id: 'a2', name: 'Artist 2', genres: [] }],
+          LastEvaluatedKey: undefined,
+        });
+
+      const result = await getArtistsIndex('user1');
+
+      expect(result).toHaveLength(2);
+      expect(result[0]!.id).toBe('a1');
+      expect(result[1]!.id).toBe('a2');
+      expect(sendMock).toHaveBeenCalledTimes(2);
     });
   });
 });
