@@ -4,15 +4,18 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SyncProgress } from './SyncProgress';
 
-const { fetchSyncStatusMock, triggerSyncMock } = vi.hoisted(() => ({
+const { fetchSyncStatusMock, triggerSyncMock, toastErrorMock } = vi.hoisted(() => ({
   fetchSyncStatusMock: vi.fn(),
   triggerSyncMock: vi.fn(),
+  toastErrorMock: vi.fn(),
 }));
 
 vi.mock('../../api/sync', () => ({
   fetchSyncStatus: fetchSyncStatusMock,
   triggerSync: triggerSyncMock,
 }));
+
+vi.mock('sonner', () => ({ toast: { error: toastErrorMock }, Toaster: () => null }));
 
 vi.mock('framer-motion', () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -55,7 +58,7 @@ describe('SyncProgress', () => {
     renderSyncProgress(queryClient);
 
     await waitFor(() => {
-      expect(screen.getByText('Failed to fetch sync status')).toBeInTheDocument();
+      expect(toastErrorMock).toHaveBeenCalledWith('Failed to fetch sync status');
     });
 
     expect(screen.getByRole('button', { name: 'Quick Sync' })).toBeInTheDocument();
@@ -81,7 +84,7 @@ describe('SyncProgress', () => {
     renderSyncProgress(queryClient);
 
     await waitFor(() => {
-      expect(screen.getByText('Sync failed: Sync timed out')).toBeInTheDocument();
+      expect(toastErrorMock).toHaveBeenCalledWith('Sync failed: Sync timed out');
     });
   });
 });

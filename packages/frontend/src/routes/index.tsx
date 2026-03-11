@@ -37,9 +37,9 @@ function HomePage() {
   return (
     <div className="min-h-screen bg-spotify-black">
       <Header />
-      <main className="mx-auto max-w-7xl px-6 py-6">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <YearFilter />
             <SortDropdown />
             <DateRangeFilter />

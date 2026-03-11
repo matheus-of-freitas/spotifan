@@ -1,12 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchSyncStatus, triggerSync } from '../../api/sync';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
 
 const JUST_TRIGGERED_TIMEOUT_MS = 30_000;
 
 export function SyncProgress() {
-  const [syncError, setSyncError] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const wasRunningRef = useRef(false);
   const justTriggeredRef = useRef(false);
@@ -53,7 +53,6 @@ export function SyncProgress() {
   }, []);
 
   const handleSync = async (syncType: 'quick' | 'full') => {
-    setSyncError(null);
     try {
       await triggerSync(syncType);
       justTriggeredRef.current = true;
@@ -62,7 +61,7 @@ export function SyncProgress() {
       }, JUST_TRIGGERED_TIMEOUT_MS);
       await queryClient.invalidateQueries({ queryKey: ['sync', 'status'] });
     } catch (err) {
-      setSyncError(err instanceof Error ? err.message : 'Sync failed');
+      toast.error(err instanceof Error ? err.message : 'Sync failed');
     }
   };
 
@@ -72,6 +71,19 @@ export function SyncProgress() {
       : statusError
         ? 'Failed to fetch sync status'
         : null;
+
+  useEffect(() => {
+    if (statusErrorMessage) {
+      toast.error(statusErrorMessage);
+    }
+  }, [statusErrorMessage]);
+
+  useEffect(() => {
+    if (status?.status === 'error') {
+      toast.error(`Sync failed: ${status.errorMessage ?? 'Unknown error'}`);
+    }
+  }, [status?.status, status?.errorMessage]);
+
   const isRunning = status?.status === 'running' && !statusErrorMessage;
   const hasFullSync = status?.lastFullSyncAt != null;
   const progress =
@@ -128,13 +140,6 @@ export function SyncProgress() {
           </motion.div>
         )}
       </AnimatePresence>
-      {syncError && <span className="text-xs text-red-400">{syncError}</span>}
-      {statusErrorMessage && <span className="text-xs text-red-400">{statusErrorMessage}</span>}
-      {status?.status === 'error' && (
-        <span className="text-xs text-red-400">
-          Sync failed: {status.errorMessage ?? 'Unknown error'}
-        </span>
-      )}
     </div>
   );
 }

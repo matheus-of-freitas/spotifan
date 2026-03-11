@@ -15,7 +15,7 @@ export function Header() {
   };
 
   return (
-    <header className="flex items-center justify-between border-b border-spotify-gray-dark px-6 py-4">
+    <header className="flex items-center justify-between border-b border-spotify-gray-dark px-4 py-3 sm:px-6 sm:py-4">
       <div className="flex items-center gap-2">
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -33,7 +33,9 @@ export function Header() {
           {user.imageUrl && (
             <img src={user.imageUrl} alt={user.displayName} className="h-8 w-8 rounded-full" />
           )}
-          <span className="text-sm text-spotify-gray-light">{user.displayName}</span>
+          <span className="hidden text-sm text-spotify-gray-light sm:inline">
+            {user.displayName}
+          </span>
           <button
             onClick={() => void handleLogout()}
             className="rounded px-3 py-1 text-sm text-spotify-gray-light transition-colors hover:text-spotify-white"

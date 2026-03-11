@@ -13,20 +13,22 @@ export function DateRangeFilter() {
   const setDateRange = useFilterStore((s) => s.setDateRange);
 
   return (
-    <div className="flex items-center gap-1">
-      {PRESETS.map((preset) => (
-        <button
-          key={preset.value}
-          onClick={() => setDateRange(dateRange === preset.value ? null : preset.value)}
-          className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-            dateRange === preset.value
-              ? 'bg-spotify-green text-spotify-black'
-              : 'bg-spotify-card-bg text-spotify-gray-light hover:text-spotify-white'
-          }`}
-        >
-          {preset.label}
-        </button>
-      ))}
+    <div className="overflow-x-auto">
+      <div className="flex items-center gap-1">
+        {PRESETS.map((preset) => (
+          <button
+            key={preset.value}
+            onClick={() => setDateRange(dateRange === preset.value ? null : preset.value)}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              dateRange === preset.value
+                ? 'bg-spotify-green text-spotify-black'
+                : 'bg-spotify-card-bg text-spotify-gray-light hover:text-spotify-white'
+            }`}
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
