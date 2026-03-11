@@ -89,7 +89,7 @@ vi.mock('../../lib/logger.js', () => ({
 }));
 
 import { runSync } from '../syncService.js';
-import { RetryBudgetExceededError } from '../../lib/errors.js';
+import { AppError, RetryBudgetExceededError } from '../../lib/errors.js';
 
 const currentYear = new Date().getFullYear().toString();
 
@@ -560,7 +560,7 @@ describe('syncService', () => {
       expect.objectContaining({ artistId: 'a1', artistName: 'Artist 1' }),
     );
     expect(loggerMock.warn).toHaveBeenCalledWith(
-      'Some artists were skipped due to rate limiting',
+      'Some artists were skipped during sync',
       expect.objectContaining({ skippedCount: 1, totalArtists: 2 }),
     );
   });
@@ -583,8 +583,39 @@ describe('syncService', () => {
     expect(lastStatus.status).toBe('done');
 
     expect(loggerMock.warn).toHaveBeenCalledWith(
-      'Some artists were skipped due to rate limiting',
+      'Some artists were skipped during sync',
       expect.objectContaining({ skippedCount: 2, totalArtists: 2 }),
+    );
+  });
+
+  it('skips artist that returns a 400 from Spotify and completes sync as done', async () => {
+    getFollowedArtistsMock.mockResolvedValue([
+      { id: 'a1', name: 'Bad Artist', genres: ['rock'] },
+      { id: 'a2', name: 'Good Artist', genres: ['pop'] },
+    ]);
+    getArtistReleasesCachedMock.mockResolvedValue(null);
+    getArtistAlbumsMock
+      .mockRejectedValueOnce(new AppError(400, 'Spotify API error: 400'))
+      .mockResolvedValueOnce([makeAlbum('alb1', 'Album 1', '2024-01-01', 'a2', 'Good Artist')]);
+
+    await runSync('user1', 'full');
+
+    // a1 was skipped — only a2's release written
+    expect(batchWriteUserReleasesMock).toHaveBeenCalledOnce();
+    const userReleases = batchWriteUserReleasesMock.mock.calls[0]![1];
+    expect(userReleases[0].artistId).toBe('a2');
+
+    // Sync should complete as done
+    const lastStatus = putSyncStatusMock.mock.calls.at(-1)![1];
+    expect(lastStatus.status).toBe('done');
+
+    expect(loggerMock.warn).toHaveBeenCalledWith(
+      'Skipping artist due to Spotify client error',
+      expect.objectContaining({ artistId: 'a1', artistName: 'Bad Artist', statusCode: 400 }),
+    );
+    expect(loggerMock.warn).toHaveBeenCalledWith(
+      'Some artists were skipped during sync',
+      expect.objectContaining({ skippedCount: 1, totalArtists: 2 }),
     );
   });
 

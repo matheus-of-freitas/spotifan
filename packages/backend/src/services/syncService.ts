@@ -16,7 +16,7 @@ import { updateSyncStatus } from '../db/users.js';
 import type { Release, CachedArtist } from '../db/releases.js';
 import type { SpotifyAlbum } from './spotifyClient.js';
 import { createChildLogger, logUnknownError } from '../lib/logger.js';
-import { RetryBudgetExceededError } from '../lib/errors.js';
+import { AppError, RetryBudgetExceededError } from '../lib/errors.js';
 
 const CONCURRENCY = 1;
 
@@ -147,6 +147,15 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
             skippedCount++;
             return;
           }
+          if (err instanceof AppError && err.statusCode >= 400 && err.statusCode < 500) {
+            log.warn('Skipping artist due to Spotify client error', {
+              artistId: artist.id,
+              artistName: artist.name,
+              statusCode: err.statusCode,
+            });
+            skippedCount++;
+            return;
+          }
           throw new Error(`Artist albums request failed: ${getErrorMessage(err)}`);
         }
         log.info('Fetched artist albums from Spotify', {
@@ -197,7 +206,7 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
     });
 
     if (skippedCount > 0) {
-      log.warn('Some artists were skipped due to rate limiting', {
+      log.warn('Some artists were skipped during sync', {
         skippedCount,
         totalArtists: artists.length,
       });
