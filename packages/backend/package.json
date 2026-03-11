@@ -18,7 +18,7 @@
     "@aws-sdk/lib-dynamodb": "^3.686.0",
     "@hono/node-server": "^1.13.7",
     "got": "^14.4.4",
-    "hono": "^4.6.12"
+    "hono": "^4.12.7"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.145",

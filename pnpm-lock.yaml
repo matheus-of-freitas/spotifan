@@ -43,13 +43,13 @@ importers:
         version: 3.1005.0(@aws-sdk/client-dynamodb@3.1005.0)
       '@hono/node-server':
         specifier: ^1.13.7
-        version: 1.19.11(hono@4.12.6)
+        version: 1.19.11(hono@4.12.7)
       got:
         specifier: ^14.4.4
         version: 14.6.6
       hono:
-        specifier: ^4.6.12
-        version: 4.12.6
+        specifier: ^4.12.7
+        version: 4.12.7
     devDependencies:
       '@types/aws-lambda':
         specifier: ^8.10.145
@@ -2184,8 +2184,8 @@ packages:
   headers-polyfill@4.0.3:
     resolution: {integrity: sha512-IScLbePpkvO846sIwOtOTDjutRMWdXdJmXdMvk6gCBHxFO8d+QKOQedyZSxFTTFYRSmlgSTDtXqqq4pcenBXLQ==}
 
-  hono@4.12.6:
-    resolution: {integrity: sha512-KljEp+MeEEEIOT75qBo1UjqqB29fRMtlDEwCxcexOzdkUq6LR/vRvHk5pdROcxyOYyW1niq7Gb5pFVGy5R1eBw==}
+  hono@4.12.7:
+    resolution: {integrity: sha512-jq9l1DM0zVIvsm3lv9Nw9nlJnMNPOcAtsbsgiUhWcFzPE99Gvo6yRTlszSLLYacMeQ6quHD6hMfId8crVHvexw==}
     engines: {node: '>=16.9.0'}
 
   html-encoding-sniffer@4.0.0:
@@ -4052,9 +4052,9 @@ snapshots:
       '@eslint/core': 0.17.0
       levn: 0.4.1
 
-  '@hono/node-server@1.19.11(hono@4.12.6)':
+  '@hono/node-server@1.19.11(hono@4.12.7)':
     dependencies:
-      hono: 4.12.6
+      hono: 4.12.7
 
   '@humanfs/core@0.19.1': {}
 
@@ -5519,7 +5519,7 @@ snapshots:
 
   headers-polyfill@4.0.3: {}
 
-  hono@4.12.6: {}
+  hono@4.12.7: {}
 
   html-encoding-sniffer@4.0.0:
     dependencies:
