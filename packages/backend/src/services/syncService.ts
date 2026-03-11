@@ -124,6 +124,7 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
 
       // Check shared artist cache first
       let releases = await getArtistReleasesCached(artist.id);
+      let skippedThisArtist = false;
 
       if (!releases) {
         // Fetch fresh from Spotify
@@ -131,7 +132,7 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
           artistId: artist.id,
         });
         const freshToken = await getValidAccessToken(spotifyId);
-        let albums;
+        let albums: Awaited<ReturnType<typeof getArtistAlbums>> | undefined;
         try {
           albums = await getArtistAlbums(
             freshToken,
@@ -145,47 +146,52 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
               artistName: artist.name,
             });
             skippedCount++;
-            return;
-          }
-          if (err instanceof AppError && err.statusCode >= 400 && err.statusCode < 500) {
+            skippedThisArtist = true;
+          } else if (err instanceof AppError && err.statusCode >= 400 && err.statusCode < 500) {
             log.warn('Skipping artist due to Spotify client error', {
               artistId: artist.id,
               artistName: artist.name,
               statusCode: err.statusCode,
             });
             skippedCount++;
-            return;
+            skippedThisArtist = true;
+          } else {
+            throw new Error(`Artist albums request failed: ${getErrorMessage(err)}`);
           }
-          throw new Error(`Artist albums request failed: ${getErrorMessage(err)}`);
         }
-        log.info('Fetched artist albums from Spotify', {
-          artistId: artist.id,
-          albumCount: albums.length,
-        });
-        releases = albums.map((a) => albumToRelease(a, artist.id, artist.name, genres));
 
-        // Write to shared artist cache
-        if (releases.length > 0) {
-          await batchWriteArtistReleases(releases);
+        if (!skippedThisArtist && albums !== undefined) {
+          log.info('Fetched artist albums from Spotify', {
+            artistId: artist.id,
+            albumCount: albums.length,
+          });
+          releases = albums.map((a) => albumToRelease(a, artist.id, artist.name, genres));
+
+          // Write to shared artist cache
+          if (releases.length > 0) {
+            await batchWriteArtistReleases(releases);
+          }
         }
       }
 
-      // For quick sync, filter to current year only
-      const filtered =
-        syncType === 'quick' ? releases.filter((r) => r.year === currentYear) : releases;
+      if (!skippedThisArtist && releases) {
+        // For quick sync, filter to current year only
+        const filtered =
+          syncType === 'quick' ? releases.filter((r) => r.year === currentYear) : releases;
 
-      // Dedup: skip albums already seen or already persisted
-      const uniqueReleases = filtered.filter((r) => {
-        if (seenAlbumIds.has(r.albumId)) return false;
-        seenAlbumIds.add(r.albumId);
-        return true;
-      });
+        // Dedup: skip albums already seen or already persisted
+        const uniqueReleases = filtered.filter((r) => {
+          if (seenAlbumIds.has(r.albumId)) return false;
+          seenAlbumIds.add(r.albumId);
+          return true;
+        });
 
-      // Write to user namespace
-      if (uniqueReleases.length > 0) {
-        await batchWriteUserReleases(spotifyId, uniqueReleases);
-        for (const r of uniqueReleases) {
-          allYears.add(r.year);
+        // Write to user namespace
+        if (uniqueReleases.length > 0) {
+          await batchWriteUserReleases(spotifyId, uniqueReleases);
+          for (const r of uniqueReleases) {
+            allYears.add(r.year);
+          }
         }
       }
 

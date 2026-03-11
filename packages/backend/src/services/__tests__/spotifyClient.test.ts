@@ -372,6 +372,7 @@ describe('spotifyClient', () => {
       expect(result).toHaveLength(1);
       expect(result[0]!.id).toBe('alb1');
       expect(gotGetMock.mock.calls[0]![0]).toContain('include_groups=album');
+      expect(gotGetMock.mock.calls[0]![0]).toContain('market=from_token');
       expect(gotGetMock.mock.calls[0]![0]).toContain('limit=50');
     });
 
@@ -461,7 +462,7 @@ describe('spotifyClient', () => {
         cause: 'server_error',
         delayMs: 1000,
         elapsedMs: 150,
-        url: 'https://api.spotify.com/v1/artists/artist-1/albums?include_groups=album&limit=50&offset=0',
+        url: 'https://api.spotify.com/v1/artists/artist-1/albums?include_groups=album&market=from_token&limit=50&offset=0',
       });
     });
 
