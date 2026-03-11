@@ -78,10 +78,11 @@ Collab albums (same albumId under multiple artists) are deduplicated during sync
 
 ### Sync Types
 
-- **Quick sync** (daily cooldown, 24h): fetches only current-year albums, merges new years into existing years index
-- **Full sync** (weekly cooldown, 7 days): fetches all albums across all years, rebuilds years index from scratch
+- **Quick sync** (daily cooldown, 24h): reads artist list from `ARTISTS#INDEX` (no Spotify artist-list call), fetches only current-year albums, merges new years into existing years index; **requires a prior Full Sync** (gated on `lastFullSyncAt`)
+- **Full sync** (weekly cooldown, 7 days): fetches all artists from Spotify, persists list to `ARTISTS#INDEX`, fetches all albums across all years, rebuilds years index from scratch
 - Both skip albums already persisted in the user's release list
 - Cooldowns tracked independently via `lastQuickSyncAt` / `lastFullSyncAt` on user metadata
+- New artists followed after the last Full Sync are missed by Quick Sync — picked up on the next Full Sync (accepted trade-off)
 
 ### Auth
 
@@ -93,14 +94,15 @@ Collab albums (same albumId under multiple artists) are deduplicated during sync
 
 Table: `spotifan` | PK + SK | GSI1PK + GSI1SK | TTL: `ttl`
 
-| Item         | PK                  | SK                                |
-| ------------ | ------------------- | --------------------------------- |
-| User         | `USER#{spotifyId}`  | `METADATA`                        |
-| Sync status  | `USER#{spotifyId}`  | `SYNC#CURRENT`                    |
-| Years index  | `USER#{spotifyId}`  | `YEARS#INDEX`                     |
-| Release      | `USER#{spotifyId}`  | `RELEASE#{year}#{date}#{albumId}` |
-| Artist cache | `ARTIST#{artistId}` | `RELEASE#{albumId}`               |
-| PKCE state   | `PKCE#{state}`      | `VERIFIER`                        |
+| Item          | PK                  | SK                                |
+| ------------- | ------------------- | --------------------------------- |
+| User          | `USER#{spotifyId}`  | `METADATA`                        |
+| Sync status   | `USER#{spotifyId}`  | `SYNC#CURRENT`                    |
+| Years index   | `USER#{spotifyId}`  | `YEARS#INDEX`                     |
+| Artists index | `USER#{spotifyId}`  | `ARTISTS#INDEX`                   |
+| Release       | `USER#{spotifyId}`  | `RELEASE#{year}#{date}#{albumId}` |
+| Artist cache  | `ARTIST#{artistId}` | `RELEASE#{albumId}`               |
+| PKCE state    | `PKCE#{state}`      | `VERIFIER`                        |
 
 ## Environment Variables (Backend)
 

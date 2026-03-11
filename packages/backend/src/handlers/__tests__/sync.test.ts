@@ -122,6 +122,7 @@ describe('sync handlers', () => {
         Item: {
           spotifyId: 'user1',
           syncStatus: 'done',
+          lastFullSyncAt: Date.now() - 100_000_000,
           lastQuickSyncAt: Date.now() - 1000, // synced 1 second ago
         },
       });
@@ -166,6 +167,7 @@ describe('sync handlers', () => {
           spotifyId: 'user1',
           syncStatus: 'running',
           lastQuickSyncAt: Date.now() - 100000000, // long ago
+          lastFullSyncAt: Date.now() - 100000000,
         },
       });
       // getSyncStatus returns recently started sync
@@ -197,6 +199,7 @@ describe('sync handlers', () => {
           spotifyId: 'user1',
           syncStatus: 'running',
           lastQuickSyncAt: Date.now() - 100000000,
+          lastFullSyncAt: Date.now() - 100000000,
         },
       });
       // getSyncStatus returns stale sync (started 25 min ago)
@@ -232,6 +235,7 @@ describe('sync handlers', () => {
           spotifyId: 'user1',
           syncStatus: 'running',
           lastQuickSyncAt: Date.now() - 100000000,
+          lastFullSyncAt: Date.now() - 100000000,
         },
       });
       // getSyncStatus returns null (no SYNC#CURRENT item)
@@ -248,12 +252,53 @@ describe('sync handlers', () => {
       expect(res.status).toBe(202);
     });
 
+    it('returns 400 when quick sync requested before any full sync', async () => {
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          spotifyId: 'user1',
+          syncStatus: 'idle',
+          // no lastFullSyncAt
+        },
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/sync', {
+        method: 'POST',
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe('full_sync_required');
+    });
+
+    it('allows quick sync when lastFullSyncAt is set', async () => {
+      runSyncMock.mockResolvedValue(undefined);
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          spotifyId: 'user1',
+          syncStatus: 'idle',
+          lastFullSyncAt: Date.now() - 100_000_000,
+        },
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/sync', {
+        method: 'POST',
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(202);
+      expect(runSyncMock).toHaveBeenCalledWith('user1', 'quick');
+    });
+
     it('starts quick sync locally when no SYNC_WORKER_FUNCTION_NAME', async () => {
       runSyncMock.mockResolvedValue(undefined);
       sendMock.mockResolvedValueOnce({
         Item: {
           spotifyId: 'user1',
           syncStatus: 'idle',
+          lastFullSyncAt: Date.now() - 100_000_000,
         },
       });
 
@@ -294,6 +339,7 @@ describe('sync handlers', () => {
         Item: {
           spotifyId: 'user1',
           syncStatus: 'idle',
+          lastFullSyncAt: Date.now() - 100_000_000,
         },
       });
 
@@ -334,6 +380,7 @@ describe('sync handlers', () => {
         Item: {
           spotifyId: 'user1',
           syncStatus: 'idle',
+          lastFullSyncAt: Date.now() - 100_000_000,
           // no lastQuickSyncAt
         },
       });
@@ -372,6 +419,7 @@ describe('sync handlers', () => {
         Item: {
           spotifyId: 'user1',
           syncStatus: 'idle',
+          lastFullSyncAt: Date.now() - 100_000_000,
         },
       });
 
@@ -410,6 +458,9 @@ describe('sync handlers', () => {
 
   describe('GET /api/sync/status', () => {
     it('returns idle when no sync status exists', async () => {
+      // getSyncStatus (Promise.all[0])
+      sendMock.mockResolvedValueOnce({ Item: undefined });
+      // getUser (Promise.all[1])
       sendMock.mockResolvedValueOnce({ Item: undefined });
 
       const app = createApp();
@@ -423,10 +474,12 @@ describe('sync handlers', () => {
         status: 'idle',
         totalArtists: 0,
         processedArtists: 0,
+        lastFullSyncAt: null,
       });
     });
 
-    it('returns sync status when available', async () => {
+    it('returns sync status with lastFullSyncAt when available', async () => {
+      const lastFullSyncAt = Date.now() - 3_600_000;
       const syncStatus = {
         status: 'running',
         syncType: 'quick',
@@ -435,7 +488,10 @@ describe('sync handlers', () => {
         startedAt: Date.now() - 60_000, // 1 minute ago (not stale)
         updatedAt: Date.now(),
       };
+      // getSyncStatus
       sendMock.mockResolvedValueOnce({ Item: syncStatus });
+      // getUser
+      sendMock.mockResolvedValueOnce({ Item: { spotifyId: 'user1', lastFullSyncAt } });
 
       const app = createApp();
       const res = await app.request('/api/sync/status', {
@@ -444,7 +500,31 @@ describe('sync handlers', () => {
 
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body).toEqual(syncStatus);
+      expect(body).toEqual({ ...syncStatus, lastFullSyncAt });
+    });
+
+    it('returns lastFullSyncAt: null when user has no full sync', async () => {
+      const syncStatus = {
+        status: 'done',
+        syncType: 'quick',
+        totalArtists: 10,
+        processedArtists: 10,
+        startedAt: Date.now() - 60_000,
+        updatedAt: Date.now(),
+      };
+      // getSyncStatus
+      sendMock.mockResolvedValueOnce({ Item: syncStatus });
+      // getUser
+      sendMock.mockResolvedValueOnce({ Item: { spotifyId: 'user1' } });
+
+      const app = createApp();
+      const res = await app.request('/api/sync/status', {
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { lastFullSyncAt: unknown };
+      expect(body.lastFullSyncAt).toBeNull();
     });
 
     it('resets stale running sync to error on status poll', async () => {
@@ -456,8 +536,11 @@ describe('sync handlers', () => {
         startedAt: Date.now() - 25 * 60 * 1000, // 25 minutes ago
         updatedAt: Date.now() - 20 * 60 * 1000,
       };
+      const lastFullSyncAt = Date.now() - 86_400_000;
       // getSyncStatus
       sendMock.mockResolvedValueOnce({ Item: staleStatus });
+      // getUser
+      sendMock.mockResolvedValueOnce({ Item: { spotifyId: 'user1', lastFullSyncAt } });
       // putSyncStatus (reset SYNC#CURRENT)
       sendMock.mockResolvedValueOnce({});
       // updateSyncStatus (reset user metadata)
@@ -469,9 +552,14 @@ describe('sync handlers', () => {
       });
 
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { status: string; errorMessage: string };
+      const body = (await res.json()) as {
+        status: string;
+        errorMessage: string;
+        lastFullSyncAt: number;
+      };
       expect(body.status).toBe('error');
       expect(body.errorMessage).toBe('Sync timed out');
+      expect(body.lastFullSyncAt).toBe(lastFullSyncAt);
     });
 
     it('returns recent running sync without resetting', async () => {
@@ -483,7 +571,10 @@ describe('sync handlers', () => {
         startedAt: Date.now() - 5 * 60 * 1000, // 5 minutes ago
         updatedAt: Date.now(),
       };
+      // getSyncStatus
       sendMock.mockResolvedValueOnce({ Item: recentStatus });
+      // getUser
+      sendMock.mockResolvedValueOnce({ Item: { spotifyId: 'user1' } });
 
       const app = createApp();
       const res = await app.request('/api/sync/status', {
@@ -493,8 +584,8 @@ describe('sync handlers', () => {
       expect(res.status).toBe(200);
       const body = (await res.json()) as { status: string };
       expect(body.status).toBe('running');
-      // Should not have called putSyncStatus or updateSyncStatus
-      expect(sendMock).toHaveBeenCalledTimes(1);
+      // Should not have called putSyncStatus or updateSyncStatus (only getSyncStatus + getUser)
+      expect(sendMock).toHaveBeenCalledTimes(2);
     });
   });
 });

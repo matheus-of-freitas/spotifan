@@ -19,6 +19,8 @@ const {
   getYearsIndexMock,
   putYearsIndexMock,
   putGenresIndexMock,
+  putArtistsIndexMock,
+  getArtistsIndexMock,
 } = vi.hoisted(() => ({
   batchWriteUserReleasesMock: vi.fn(),
   batchWriteArtistReleasesMock: vi.fn(),
@@ -27,6 +29,8 @@ const {
   getYearsIndexMock: vi.fn(),
   putYearsIndexMock: vi.fn(),
   putGenresIndexMock: vi.fn(),
+  putArtistsIndexMock: vi.fn(),
+  getArtistsIndexMock: vi.fn(),
 }));
 
 const { putSyncStatusMock } = vi.hoisted(() => ({
@@ -65,6 +69,8 @@ vi.mock('../../db/releases.js', () => ({
   getYearsIndex: getYearsIndexMock,
   putYearsIndex: putYearsIndexMock,
   putGenresIndex: putGenresIndexMock,
+  putArtistsIndex: putArtistsIndexMock,
+  getArtistsIndex: getArtistsIndexMock,
 }));
 
 vi.mock('../../db/sync.js', () => ({
@@ -108,6 +114,8 @@ describe('syncService', () => {
     batchWriteArtistReleasesMock.mockResolvedValue(undefined);
     putYearsIndexMock.mockResolvedValue(undefined);
     putGenresIndexMock.mockResolvedValue(undefined);
+    putArtistsIndexMock.mockResolvedValue(undefined);
+    getArtistsIndexMock.mockResolvedValue([]);
     getUserExistingAlbumIdsMock.mockResolvedValue(new Set());
     getYearsIndexMock.mockResolvedValue([]);
   });
@@ -120,6 +128,11 @@ describe('syncService', () => {
     ]);
 
     await runSync('user1', 'full');
+
+    // Should persist artists index
+    expect(putArtistsIndexMock).toHaveBeenCalledWith('user1', [
+      { id: 'a1', name: 'Artist 1', genres: ['rock'] },
+    ]);
 
     // Should write to artist cache
     expect(batchWriteArtistReleasesMock).toHaveBeenCalledOnce();
@@ -289,13 +302,13 @@ describe('syncService', () => {
   it('sets error status with unknown message for non-Error throws', async () => {
     getFollowedArtistsMock.mockRejectedValue('string error');
 
-    await expect(runSync('user1', 'quick')).rejects.toThrow(
+    await expect(runSync('user1', 'full')).rejects.toThrow(
       'Followed artists request failed: Unknown error',
     );
 
     const lastSyncStatusCall = putSyncStatusMock.mock.calls.at(-1)![1];
     expect(lastSyncStatusCall.errorMessage).toBe('Followed artists request failed: Unknown error');
-    expect(lastSyncStatusCall.syncType).toBe('quick');
+    expect(lastSyncStatusCall.syncType).toBe('full');
   });
 
   it('updates progress after each artist', async () => {
@@ -343,8 +356,22 @@ describe('syncService', () => {
   });
 
   describe('quick sync', () => {
+    it('reads artists from index, not Spotify', async () => {
+      getArtistsIndexMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockResolvedValue([
+        makeAlbum('alb1', 'Current Album', `${currentYear}-06-15`, 'a1', 'Artist 1'),
+      ]);
+
+      await runSync('user1', 'quick');
+
+      expect(getArtistsIndexMock).toHaveBeenCalledWith('user1');
+      expect(getFollowedArtistsMock).not.toHaveBeenCalled();
+      expect(putArtistsIndexMock).not.toHaveBeenCalled();
+    });
+
     it('filters releases to current year only', async () => {
-      getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistsIndexMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
       getArtistReleasesCachedMock.mockResolvedValue(null);
       getArtistAlbumsMock.mockResolvedValue([
         makeAlbum('alb1', 'Old Album', '2020-01-01', 'a1', 'Artist 1'),
@@ -366,7 +393,7 @@ describe('syncService', () => {
     });
 
     it('passes a current-year cutoff to artist album pagination', async () => {
-      getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistsIndexMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
       getArtistReleasesCachedMock.mockResolvedValue(null);
       getArtistAlbumsMock.mockResolvedValue([
         makeAlbum('alb1', 'Current Album', `${currentYear}-06-15`, 'a1', 'Artist 1'),
@@ -380,7 +407,7 @@ describe('syncService', () => {
     });
 
     it('merges new years into existing years index', async () => {
-      getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistsIndexMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
       getArtistReleasesCachedMock.mockResolvedValue(null);
       getArtistAlbumsMock.mockResolvedValue([
         makeAlbum('alb1', 'Current Album', `${currentYear}-03-01`, 'a1', 'Artist 1'),
@@ -400,7 +427,7 @@ describe('syncService', () => {
     });
 
     it('skips all releases when only old albums exist', async () => {
-      getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistsIndexMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
       getArtistReleasesCachedMock.mockResolvedValue(null);
       getArtistAlbumsMock.mockResolvedValue([
         makeAlbum('alb1', 'Old Album', '2020-01-01', 'a1', 'Artist 1'),

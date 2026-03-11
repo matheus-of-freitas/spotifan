@@ -19,6 +19,12 @@ export interface ReleasesPage {
   nextCursor?: string;
 }
 
+export interface CachedArtist {
+  id: string;
+  name: string;
+  genres: string[];
+}
+
 export async function batchWriteUserReleases(
   spotifyId: string,
   releases: Release[],
@@ -254,6 +260,29 @@ export async function putGenresIndex(spotifyId: string, genres: string[]): Promi
       },
     }),
   );
+}
+
+export async function putArtistsIndex(spotifyId: string, artists: CachedArtist[]): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: getTableName(),
+      Item: {
+        PK: `USER#${spotifyId}`,
+        SK: 'ARTISTS#INDEX',
+        artists,
+      },
+    }),
+  );
+}
+
+export async function getArtistsIndex(spotifyId: string): Promise<CachedArtist[] | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: getTableName(),
+      Key: { PK: `USER#${spotifyId}`, SK: 'ARTISTS#INDEX' },
+    }),
+  );
+  return (result.Item?.['artists'] as CachedArtist[] | undefined) ?? null;
 }
 
 function chunk<T>(arr: T[], size: number): T[][] {

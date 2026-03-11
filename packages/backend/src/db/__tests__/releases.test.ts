@@ -32,7 +32,10 @@ import {
   putYearsIndex,
   getGenresIndex,
   putGenresIndex,
+  putArtistsIndex,
+  getArtistsIndex,
   type Release,
+  type CachedArtist,
 } from '../releases.js';
 
 function makeRelease(overrides: Partial<Release> = {}): Release {
@@ -475,6 +478,45 @@ describe('releases', () => {
         SK: 'GENRES#INDEX',
         genres: ['rock', 'indie'],
       });
+    });
+  });
+
+  describe('putArtistsIndex', () => {
+    it('writes artists with correct PK/SK and no TTL', async () => {
+      sendMock.mockResolvedValueOnce({});
+      const artists: CachedArtist[] = [
+        { id: 'a1', name: 'Artist 1', genres: ['rock'] },
+        { id: 'a2', name: 'Artist 2', genres: ['pop', 'indie'] },
+      ];
+
+      await putArtistsIndex('user1', artists);
+
+      const cmd = sendMock.mock.calls[0]![0] as PutCommand;
+      expect(cmd.input.Item).toEqual({
+        PK: 'USER#user1',
+        SK: 'ARTISTS#INDEX',
+        artists,
+      });
+      expect(cmd.input.Item!['ttl']).toBeUndefined();
+    });
+  });
+
+  describe('getArtistsIndex', () => {
+    it('returns artists when item exists', async () => {
+      const artists: CachedArtist[] = [{ id: 'a1', name: 'Artist 1', genres: ['rock'] }];
+      sendMock.mockResolvedValueOnce({ Item: { artists } });
+
+      const result = await getArtistsIndex('user1');
+
+      expect(result).toEqual(artists);
+    });
+
+    it('returns null when item does not exist', async () => {
+      sendMock.mockResolvedValueOnce({ Item: undefined });
+
+      const result = await getArtistsIndex('user1');
+
+      expect(result).toBeNull();
     });
   });
 });

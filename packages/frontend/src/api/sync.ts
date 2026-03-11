@@ -4,6 +4,7 @@ export interface SyncStatus {
   totalArtists: number;
   processedArtists: number;
   errorMessage?: string;
+  lastFullSyncAt: number | null;
 }
 
 export async function triggerSync(syncType: 'quick' | 'full' = 'quick'): Promise<void> {

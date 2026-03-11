@@ -8,10 +8,12 @@ import {
   getYearsIndex,
   putYearsIndex,
   putGenresIndex,
+  putArtistsIndex,
+  getArtistsIndex,
 } from '../db/releases.js';
 import { putSyncStatus } from '../db/sync.js';
 import { updateSyncStatus } from '../db/users.js';
-import type { Release } from '../db/releases.js';
+import type { Release, CachedArtist } from '../db/releases.js';
 import type { SpotifyAlbum } from './spotifyClient.js';
 import { createChildLogger, logUnknownError } from '../lib/logger.js';
 
@@ -74,13 +76,21 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
     log.info('Fetched access token for sync');
 
     log.info('Fetching followed artists');
-    let artists;
-    try {
-      artists = await getFollowedArtists(accessToken);
-    } catch (err) {
-      throw new Error(`Followed artists request failed: ${getErrorMessage(err)}`);
+    let artists: CachedArtist[];
+    if (syncType === 'full') {
+      let rawArtists;
+      try {
+        rawArtists = await getFollowedArtists(accessToken);
+      } catch (err) {
+        throw new Error(`Followed artists request failed: ${getErrorMessage(err)}`);
+      }
+      log.info('Fetched followed artists', { artistCount: rawArtists.length });
+      await putArtistsIndex(spotifyId, rawArtists);
+      artists = rawArtists;
+    } else {
+      artists = (await getArtistsIndex(spotifyId))!;
+      log.info('Loaded artists from index', { artistCount: artists.length });
     }
-    log.info('Fetched followed artists', { artistCount: artists.length });
 
     await putSyncStatus(spotifyId, {
       status: 'running',

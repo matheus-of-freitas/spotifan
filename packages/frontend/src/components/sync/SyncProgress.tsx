@@ -73,6 +73,7 @@ export function SyncProgress() {
         ? 'Failed to fetch sync status'
         : null;
   const isRunning = status?.status === 'running' && !statusErrorMessage;
+  const hasFullSync = status?.lastFullSyncAt != null;
   const progress =
     isRunning && status.totalArtists > 0
       ? Math.round((status.processedArtists / status.totalArtists) * 100)
@@ -111,8 +112,9 @@ export function SyncProgress() {
           >
             <button
               onClick={() => void handleSync('quick')}
-              disabled={isRunning}
-              className="rounded-full bg-spotify-green px-4 py-2 text-sm font-semibold text-spotify-black transition-colors hover:bg-spotify-green-hover disabled:opacity-50"
+              disabled={isRunning || !hasFullSync}
+              title={!hasFullSync ? 'Run a Full Sync first' : undefined}
+              className="rounded-full bg-spotify-green px-4 py-2 text-sm font-semibold text-spotify-black transition-colors hover:bg-spotify-green-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               Quick Sync
             </button>

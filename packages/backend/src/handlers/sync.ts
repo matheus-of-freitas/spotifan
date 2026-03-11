@@ -21,6 +21,11 @@ export async function handleSync(c: Context<HonoEnv>): Promise<Response> {
   const user = await getUser(spotifyId);
   if (!user) throw new AppError(404, 'User not found');
 
+  // Gate quick sync: requires at least one completed full sync
+  if (syncType === 'quick' && !user.lastFullSyncAt) {
+    return c.json({ error: 'full_sync_required', message: 'Run a Full Sync first' }, 400);
+  }
+
   // Check cooldown
   const lastSyncField = syncType === 'full' ? 'lastFullSyncAt' : 'lastQuickSyncAt';
   const cooldown = syncType === 'full' ? FULL_COOLDOWN_MS : QUICK_COOLDOWN_MS;
@@ -85,13 +90,15 @@ export async function handleSyncStatus(c: Context<HonoEnv>): Promise<Response> {
   const log = getContextLogger(c);
   const spotifyId = c.get('spotifyId');
   log.info('Sync status requested', { spotifyId });
-  const status = await getSyncStatus(spotifyId);
+  const [status, user] = await Promise.all([getSyncStatus(spotifyId), getUser(spotifyId)]);
+  const lastFullSyncAt = user?.lastFullSyncAt ?? null;
 
   if (!status) {
     return c.json({
       status: 'idle',
       totalArtists: 0,
       processedArtists: 0,
+      lastFullSyncAt,
     });
   }
 
@@ -103,8 +110,8 @@ export async function handleSyncStatus(c: Context<HonoEnv>): Promise<Response> {
     const errorStatus = { ...status, status: 'error' as const, errorMessage: 'Sync timed out' };
     await putSyncStatus(spotifyId, errorStatus);
     await updateSyncStatus(spotifyId, 'error');
-    return c.json(errorStatus);
+    return c.json({ ...errorStatus, lastFullSyncAt });
   }
 
-  return c.json(status);
+  return c.json({ ...status, lastFullSyncAt });
 }
