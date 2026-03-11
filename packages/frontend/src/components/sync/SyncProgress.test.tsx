@@ -52,6 +52,7 @@ describe('SyncProgress', () => {
       status: 'running',
       totalArtists: 10,
       processedArtists: 3,
+      lastFullSyncAt: Date.now(),
     });
     fetchSyncStatusMock.mockRejectedValue(new Error('Failed to fetch sync status'));
 
@@ -74,6 +75,13 @@ describe('SyncProgress', () => {
         },
       },
     });
+    // Pre-seed with running so prevStatusRef starts as 'running'
+    queryClient.setQueryData(['sync', 'status'], {
+      status: 'running',
+      totalArtists: 10,
+      processedArtists: 3,
+    });
+    // First poll returns error — simulating running → error transition
     fetchSyncStatusMock.mockResolvedValue({
       status: 'error',
       totalArtists: 10,
