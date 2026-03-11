@@ -17,8 +17,10 @@ import type { Release, CachedArtist } from '../db/releases.js';
 import type { SpotifyAlbum } from './spotifyClient.js';
 import { createChildLogger, logUnknownError } from '../lib/logger.js';
 import { AppError, RetryBudgetExceededError } from '../lib/errors.js';
+import { sleep } from '../lib/retry.js';
 
 const CONCURRENCY = 1;
+const ARTIST_REQUEST_DELAY_MS = 100;
 
 function albumToRelease(
   album: SpotifyAlbum,
@@ -161,6 +163,7 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
         }
 
         if (!skippedThisArtist && albums !== undefined) {
+          await sleep(ARTIST_REQUEST_DELAY_MS);
           log.info('Fetched artist albums from Spotify', {
             artistId: artist.id,
             albumCount: albums.length,

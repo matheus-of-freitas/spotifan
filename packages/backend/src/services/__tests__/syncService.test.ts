@@ -41,6 +41,10 @@ const { updateSyncStatusMock } = vi.hoisted(() => ({
   updateSyncStatusMock: vi.fn(),
 }));
 
+const { sleepMock } = vi.hoisted(() => ({
+  sleepMock: vi.fn().mockResolvedValue(undefined),
+}));
+
 const { loggerMock, createChildLoggerMock, logUnknownErrorMock } = vi.hoisted(() => ({
   loggerMock: {
     info: vi.fn(),
@@ -51,6 +55,11 @@ const { loggerMock, createChildLoggerMock, logUnknownErrorMock } = vi.hoisted(()
   },
   createChildLoggerMock: vi.fn(),
   logUnknownErrorMock: vi.fn(),
+}));
+
+vi.mock('../../lib/retry.js', () => ({
+  sleep: sleepMock,
+  withRetry: vi.fn().mockImplementation((fn: () => Promise<unknown>) => fn()),
 }));
 
 vi.mock('../spotifyClient.js', () => ({

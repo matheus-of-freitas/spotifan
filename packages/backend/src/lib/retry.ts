@@ -1,6 +1,6 @@
 import { RetryBudgetExceededError, TooManyRequestsError } from './errors.js';
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export interface RetryContext {
   attempt: number;
