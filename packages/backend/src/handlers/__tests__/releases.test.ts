@@ -7,6 +7,16 @@ const { sendMock } = vi.hoisted(() => {
   return { sendMock };
 });
 
+const { loggerMock, getContextLoggerMock } = vi.hoisted(() => ({
+  loggerMock: {
+    info: vi.fn(),
+    error: vi.fn(),
+    appendKeys: vi.fn(),
+    addContext: vi.fn(),
+  },
+  getContextLoggerMock: vi.fn(),
+}));
+
 vi.mock('@aws-sdk/client-dynamodb', () => ({
   DynamoDBClient: vi.fn().mockImplementation(() => ({})),
 }));
@@ -21,6 +31,11 @@ vi.mock('@aws-sdk/lib-dynamodb', async () => {
     },
   };
 });
+
+vi.mock('../../lib/logger.js', () => ({
+  logger: loggerMock,
+  getContextLogger: getContextLoggerMock,
+}));
 
 import { handleReleases, handleYears, handleGenres } from '../releases.js';
 import type { HonoEnv } from '../../lib/honoTypes.js';
@@ -45,6 +60,7 @@ function createApp() {
 describe('releases handlers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getContextLoggerMock.mockReturnValue(loggerMock);
     process.env['TABLE_NAME'] = 'spotifan-test';
   });
 

@@ -31,10 +31,27 @@ const { gotPostMock } = vi.hoisted(() => {
   return { gotPostMock };
 });
 
+const { loggerMock, createChildLoggerMock, logUnknownErrorMock } = vi.hoisted(() => ({
+  loggerMock: {
+    info: vi.fn(),
+    error: vi.fn(),
+    appendKeys: vi.fn(),
+    addContext: vi.fn(),
+  },
+  createChildLoggerMock: vi.fn(),
+  logUnknownErrorMock: vi.fn(),
+}));
+
 vi.mock('got', () => ({
   default: {
     post: gotPostMock,
   },
+}));
+
+vi.mock('../../lib/logger.js', () => ({
+  logger: loggerMock,
+  createChildLogger: createChildLoggerMock,
+  logUnknownError: logUnknownErrorMock,
 }));
 
 import { exchangeCodeForTokens, refreshAccessToken, getValidAccessToken } from '../tokenService.js';
@@ -46,6 +63,7 @@ describe('tokenService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    createChildLoggerMock.mockReturnValue(loggerMock);
     clearConfigCache();
     process.env['IS_LOCAL'] = 'true';
     process.env['COOKIE_SECRET'] = cookieSecret;
@@ -80,6 +98,17 @@ describe('tokenService', () => {
       });
       expect(result).toEqual(tokenResponse);
     });
+
+    it('rethrows when Spotify token exchange fails', async () => {
+      gotPostMock.mockReturnValue({
+        json: vi.fn().mockRejectedValue(new Error('Token exchange failed')),
+      });
+
+      await expect(
+        exchangeCodeForTokens('code123', 'verifier123', 'http://localhost:3000/api/auth/callback'),
+      ).rejects.toThrow('Token exchange failed');
+      expect(logUnknownErrorMock).toHaveBeenCalled();
+    });
   });
 
   describe('refreshAccessToken', () => {
@@ -112,6 +141,16 @@ describe('tokenService', () => {
 
       const result = await refreshAccessToken(encryptedRefresh);
       expect(result.newEncryptedRefreshToken).toBeTruthy();
+    });
+
+    it('rethrows when Spotify token refresh fails', async () => {
+      const encryptedRefresh = encrypt('real-refresh-token', key);
+      gotPostMock.mockReturnValue({
+        json: vi.fn().mockRejectedValue(new Error('Token refresh failed')),
+      });
+
+      await expect(refreshAccessToken(encryptedRefresh)).rejects.toThrow('Token refresh failed');
+      expect(logUnknownErrorMock).toHaveBeenCalled();
     });
   });
 

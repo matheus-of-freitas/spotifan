@@ -43,8 +43,25 @@ const { runSyncMock } = vi.hoisted(() => {
   return { runSyncMock };
 });
 
+const { loggerMock, getContextLoggerMock, logUnknownErrorMock } = vi.hoisted(() => ({
+  loggerMock: {
+    info: vi.fn(),
+    error: vi.fn(),
+    appendKeys: vi.fn(),
+    addContext: vi.fn(),
+  },
+  getContextLoggerMock: vi.fn(),
+  logUnknownErrorMock: vi.fn(),
+}));
+
 vi.mock('../../services/syncService.js', () => ({
   runSync: runSyncMock,
+}));
+
+vi.mock('../../lib/logger.js', () => ({
+  logger: loggerMock,
+  getContextLogger: getContextLoggerMock,
+  logUnknownError: logUnknownErrorMock,
 }));
 
 import { handleSync, handleSyncStatus } from '../sync.js';
@@ -78,6 +95,7 @@ function createApp() {
 describe('sync handlers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getContextLoggerMock.mockReturnValue(loggerMock);
     clearConfigCache();
     process.env['IS_LOCAL'] = 'true';
     process.env['COOKIE_SECRET'] = 'test-secret-for-encryption-key!!';
@@ -349,7 +367,6 @@ describe('sync handlers', () => {
     });
 
     it('handles local sync failure gracefully (logs but does not crash)', async () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       runSyncMock.mockRejectedValue(new Error('Sync failed'));
       sendMock.mockResolvedValueOnce({
         Item: {
@@ -367,8 +384,7 @@ describe('sync handlers', () => {
       expect(res.status).toBe(202);
       // Wait for the async catch to fire
       await new Promise((r) => setTimeout(r, 10));
-      expect(consoleSpy).toHaveBeenCalled();
-      consoleSpy.mockRestore();
+      expect(logUnknownErrorMock).toHaveBeenCalled();
     });
 
     it('allows quick sync when only full sync cooldown is active', async () => {

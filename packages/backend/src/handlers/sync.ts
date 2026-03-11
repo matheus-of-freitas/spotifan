@@ -6,14 +6,17 @@ import { updateSyncStatus } from '../db/users.js';
 import { AppError } from '../lib/errors.js';
 import { runSync } from '../services/syncService.js';
 import type { HonoEnv } from '../lib/honoTypes.js';
+import { getContextLogger, logUnknownError } from '../lib/logger.js';
 
 const QUICK_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
 const FULL_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const STALE_SYNC_MS = 20 * 60 * 1000; // 20 minutes
 
 export async function handleSync(c: Context<HonoEnv>): Promise<Response> {
+  const log = getContextLogger(c);
   const spotifyId = c.get('spotifyId');
   const syncType = c.req.query('type') === 'full' ? 'full' : 'quick';
+  log.info('Sync request received', { spotifyId, syncType });
 
   const user = await getUser(spotifyId);
   if (!user) throw new AppError(404, 'User not found');
@@ -23,6 +26,7 @@ export async function handleSync(c: Context<HonoEnv>): Promise<Response> {
   const cooldown = syncType === 'full' ? FULL_COOLDOWN_MS : QUICK_COOLDOWN_MS;
 
   if (user[lastSyncField] && Date.now() - user[lastSyncField] < cooldown) {
+    log.info('Sync request rejected due to cooldown', { spotifyId, syncType });
     throw new AppError(
       429,
       `${syncType} sync available once per ${syncType === 'full' ? '7 days' : '24 hours'}`,
@@ -35,6 +39,7 @@ export async function handleSync(c: Context<HonoEnv>): Promise<Response> {
     const isStale = !syncStatus || Date.now() - syncStatus.startedAt > STALE_SYNC_MS;
 
     if (isStale) {
+      log.error('Resetting stale running sync before starting a new one', { spotifyId, syncType });
       await updateSyncStatus(spotifyId, 'error');
       if (syncStatus) {
         await putSyncStatus(spotifyId, {
@@ -44,6 +49,10 @@ export async function handleSync(c: Context<HonoEnv>): Promise<Response> {
         });
       }
     } else {
+      log.info('Sync request rejected because another sync is already running', {
+        spotifyId,
+        syncType,
+      });
       throw new AppError(409, 'Sync already in progress');
     }
   }
@@ -53,6 +62,7 @@ export async function handleSync(c: Context<HonoEnv>): Promise<Response> {
   if (workerFunctionName) {
     // Production: invoke Lambda async
     const lambda = new LambdaClient({});
+    log.info('Invoking async sync worker', { spotifyId, syncType });
     await lambda.send(
       new InvokeCommand({
         FunctionName: workerFunctionName,
@@ -62,8 +72,9 @@ export async function handleSync(c: Context<HonoEnv>): Promise<Response> {
     );
   } else {
     // Local: run sync in-process (non-blocking)
+    log.info('Starting local in-process sync', { spotifyId, syncType });
     runSync(spotifyId, syncType).catch((err) => {
-      console.error('Sync failed:', err);
+      logUnknownError(log, 'Local sync failed', err, { spotifyId, syncType });
     });
   }
 
@@ -71,7 +82,9 @@ export async function handleSync(c: Context<HonoEnv>): Promise<Response> {
 }
 
 export async function handleSyncStatus(c: Context<HonoEnv>): Promise<Response> {
+  const log = getContextLogger(c);
   const spotifyId = c.get('spotifyId');
+  log.info('Sync status requested', { spotifyId });
   const status = await getSyncStatus(spotifyId);
 
   if (!status) {
@@ -83,6 +96,10 @@ export async function handleSyncStatus(c: Context<HonoEnv>): Promise<Response> {
   }
 
   if (status.status === 'running' && Date.now() - status.startedAt > STALE_SYNC_MS) {
+    log.error('Converting stale running sync status to error', {
+      spotifyId,
+      syncType: status.syncType,
+    });
     const errorStatus = { ...status, status: 'error' as const, errorMessage: 'Sync timed out' };
     await putSyncStatus(spotifyId, errorStatus);
     await updateSyncStatus(spotifyId, 'error');

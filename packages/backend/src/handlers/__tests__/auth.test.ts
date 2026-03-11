@@ -34,11 +34,31 @@ const { gotPostMock, gotGetMock } = vi.hoisted(() => {
   return { gotPostMock, gotGetMock };
 });
 
+const { loggerMock, createChildLoggerMock, getContextLoggerMock, logUnknownErrorMock } =
+  vi.hoisted(() => ({
+  loggerMock: {
+    info: vi.fn(),
+    error: vi.fn(),
+    appendKeys: vi.fn(),
+    addContext: vi.fn(),
+  },
+  createChildLoggerMock: vi.fn(),
+  getContextLoggerMock: vi.fn(),
+  logUnknownErrorMock: vi.fn(),
+}));
+
 vi.mock('got', () => ({
   default: {
     post: gotPostMock,
     get: gotGetMock,
   },
+}));
+
+vi.mock('../../lib/logger.js', () => ({
+  logger: loggerMock,
+  createChildLogger: createChildLoggerMock,
+  getContextLogger: getContextLoggerMock,
+  logUnknownError: logUnknownErrorMock,
 }));
 
 import { handleLogin, handleCallback, handleLogout, handleMe } from '../auth.js';
@@ -72,6 +92,8 @@ function createApp() {
 describe('auth handlers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    createChildLoggerMock.mockReturnValue(loggerMock);
+    getContextLoggerMock.mockReturnValue(loggerMock);
     clearConfigCache();
     process.env['IS_LOCAL'] = 'true';
     process.env['COOKIE_SECRET'] = 'test-secret-for-encryption-key!!';
@@ -268,6 +290,31 @@ describe('auth handlers', () => {
       const putCall = sendMock.mock.calls[3]![0];
       expect(putCall.input.Item.encryptedRefreshToken).toBeTruthy();
       expect(putCall.input.Item.spotifyId).toBe('user-no-refresh');
+    });
+
+    it('returns 500 when fetching the Spotify profile fails', async () => {
+      sendMock
+        .mockResolvedValueOnce({ Item: { verifier: 'v' } })
+        .mockResolvedValueOnce({});
+
+      gotPostMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue({
+          access_token: 'test-access',
+          refresh_token: 'test-refresh',
+          expires_in: 3600,
+          token_type: 'Bearer',
+        }),
+      });
+
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockRejectedValue(new Error('Spotify profile failed')),
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/auth/callback?code=c&state=s');
+
+      expect(res.status).toBe(500);
+      expect(logUnknownErrorMock).toHaveBeenCalled();
     });
 
     it('preserves existing user sync status on re-login', async () => {

@@ -37,6 +37,17 @@ const { updateSyncStatusMock } = vi.hoisted(() => ({
   updateSyncStatusMock: vi.fn(),
 }));
 
+const { loggerMock, createChildLoggerMock, logUnknownErrorMock } = vi.hoisted(() => ({
+  loggerMock: {
+    info: vi.fn(),
+    error: vi.fn(),
+    appendKeys: vi.fn(),
+    addContext: vi.fn(),
+  },
+  createChildLoggerMock: vi.fn(),
+  logUnknownErrorMock: vi.fn(),
+}));
+
 vi.mock('../spotifyClient.js', () => ({
   getFollowedArtists: getFollowedArtistsMock,
   getArtistAlbums: getArtistAlbumsMock,
@@ -64,6 +75,12 @@ vi.mock('../../db/users.js', () => ({
   updateSyncStatus: updateSyncStatusMock,
 }));
 
+vi.mock('../../lib/logger.js', () => ({
+  logger: loggerMock,
+  createChildLogger: createChildLoggerMock,
+  logUnknownError: logUnknownErrorMock,
+}));
+
 import { runSync } from '../syncService.js';
 
 const currentYear = new Date().getFullYear().toString();
@@ -83,8 +100,7 @@ function makeAlbum(id: string, name: string, date: string, artistId: string, art
 describe('syncService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(console, 'info').mockImplementation(() => undefined);
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    createChildLoggerMock.mockReturnValue(loggerMock);
     getValidAccessTokenMock.mockResolvedValue('access-token');
     putSyncStatusMock.mockResolvedValue(undefined);
     updateSyncStatusMock.mockResolvedValue(undefined);

@@ -1,6 +1,7 @@
 import got from 'got';
 import { withRetry } from '../lib/retry.js';
 import { AppError, TooManyRequestsError } from '../lib/errors.js';
+import { createChildLogger } from '../lib/logger.js';
 
 const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_FOLLOWED_ARTIST_PAGES = 200;
@@ -61,6 +62,7 @@ function handleSpotifyError(err: unknown): never {
 }
 
 export async function getFollowedArtists(accessToken: string): Promise<SpotifyArtist[]> {
+  const log = createChildLogger({ operation: 'getFollowedArtists' });
   const artists: SpotifyArtist[] = [];
   let after: string | undefined;
   let pageCount = 0;
@@ -89,7 +91,7 @@ export async function getFollowedArtists(accessToken: string): Promise<SpotifyAr
     });
 
     const nextAfter = page.artists.cursors.after ?? undefined;
-    console.info('spotify.followedArtists.page', {
+    log.info('Fetched Spotify followed artists page', {
       page: pageCount,
       itemCount: page.artists.items.length,
       after,
@@ -97,12 +99,15 @@ export async function getFollowedArtists(accessToken: string): Promise<SpotifyAr
     });
 
     if (nextAfter && nextAfter === after) {
+      log.error('Spotify followed artists pagination did not advance', { after, nextAfter });
       throw new Error('Spotify followed artists pagination did not advance');
     }
     if (nextAfter && seenCursors.has(nextAfter)) {
+      log.error('Spotify followed artists pagination repeated a cursor', { after, nextAfter });
       throw new Error('Spotify followed artists pagination repeated a cursor');
     }
     if (page.artists.next !== null && page.artists.items.length === 0) {
+      log.error('Spotify followed artists pagination returned an empty page before completion');
       throw new Error('Spotify followed artists pagination returned an empty page before completion');
     }
 
@@ -121,6 +126,11 @@ export async function getArtistAlbums(
   artistId: string,
   options: ArtistAlbumOptions = {},
 ): Promise<SpotifyAlbum[]> {
+  const log = createChildLogger({
+    operation: 'getArtistAlbums',
+    artistId,
+    stopAfterYear: options.stopAfterYear,
+  });
   const albums: SpotifyAlbum[] = [];
   let offset = 0;
   const limit = 50;
@@ -146,6 +156,12 @@ export async function getArtistAlbums(
       }
     });
 
+    log.info('Fetched Spotify artist albums page', {
+      artistId,
+      offset,
+      itemCount: page.items.length,
+      hasNextPage: page.next !== null,
+    });
     albums.push(...page.items);
     offset += limit;
 

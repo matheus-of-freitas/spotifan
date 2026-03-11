@@ -7,6 +7,7 @@ import { exchangeCodeForTokens } from '../services/tokenService.js';
 import { encrypt, encryptionKeyFromSecret } from '../lib/crypto.js';
 import { AppError } from '../lib/errors.js';
 import type { HonoEnv } from '../lib/honoTypes.js';
+import { getContextLogger, logUnknownError } from '../lib/logger.js';
 
 interface SpotifyProfile {
   id: string;
@@ -34,6 +35,7 @@ function computeChallenge(verifier: string): string {
 }
 
 export async function handleLogin(c: Context<HonoEnv>): Promise<Response> {
+  const log = getContextLogger(c);
   const config = await getConfig();
   const state = randomBytes(16).toString('hex');
   const verifier = randomBytes(32).toString('base64url');
@@ -52,33 +54,52 @@ export async function handleLogin(c: Context<HonoEnv>): Promise<Response> {
     code_challenge: challenge,
   });
 
+  log.info('Spotify login redirect created');
   return c.redirect(`https://accounts.spotify.com/authorize?${params}`);
 }
 
 export async function handleCallback(c: Context<HonoEnv>): Promise<Response> {
+  const log = getContextLogger(c);
   const code = c.req.query('code');
   const state = c.req.query('state');
   const error = c.req.query('error');
 
-  if (error) throw new AppError(400, `Spotify auth error: ${error}`);
-  if (!code || !state) throw new AppError(400, 'Missing code or state');
+  if (error) {
+    log.error('Spotify auth callback returned an error', { spotifyError: error });
+    throw new AppError(400, `Spotify auth error: ${error}`);
+  }
+  if (!code || !state) {
+    log.error('Spotify auth callback missing code or state');
+    throw new AppError(400, 'Missing code or state');
+  }
 
   const verifier = await consumePkceState(state);
-  if (!verifier) throw new AppError(400, 'Invalid or expired state');
+  if (!verifier) {
+    log.error('Spotify auth callback received invalid or expired state');
+    throw new AppError(400, 'Invalid or expired state');
+  }
 
   const config = await getConfig();
   const key = encryptionKeyFromSecret(config.cookieSecret);
+  log.info('Exchanging Spotify auth code for tokens');
   const tokens = await exchangeCodeForTokens(code, verifier, getRedirectUri(c));
 
   // Fetch Spotify user profile
   const { default: got } = await import('got');
-  const profile = await got
-    .get('https://api.spotify.com/v1/me', {
-      headers: { Authorization: `Bearer ${tokens.access_token}` },
-    })
-    .json<SpotifyProfile>();
+  let profile: SpotifyProfile;
+  try {
+    profile = await got
+      .get('https://api.spotify.com/v1/me', {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      })
+      .json<SpotifyProfile>();
+  } catch (error) {
+    logUnknownError(log, 'Failed to fetch Spotify profile', error);
+    throw error;
+  }
 
   const existing = await getUser(profile.id);
+  log.info('Persisting authenticated Spotify user', { spotifyId: profile.id });
   await putUser({
     spotifyId: profile.id,
     displayName: profile.display_name,
@@ -99,19 +120,24 @@ export async function handleCallback(c: Context<HonoEnv>): Promise<Response> {
     sameSite: 'Lax',
     path: '/',
   });
+  log.info('Spotify auth callback completed', { spotifyId: profile.id });
   return c.redirect('/');
 }
 
 export async function handleLogout(c: Context<HonoEnv>): Promise<Response> {
+  const log = getContextLogger(c);
+  log.info('User logged out', { spotifyId: c.get('spotifyId') });
   const cookie = getCookieConfig();
   deleteCookie(c, cookie.name, { path: '/' });
   return c.json({ ok: true });
 }
 
 export async function handleMe(c: Context<HonoEnv>): Promise<Response> {
+  const log = getContextLogger(c);
   const spotifyId = c.get('spotifyId');
   const user = await getUser(spotifyId);
   if (!user) throw new AppError(404, 'User not found');
+  log.info('Fetched authenticated user profile', { spotifyId });
   return c.json({
     spotifyId: user.spotifyId,
     displayName: user.displayName,

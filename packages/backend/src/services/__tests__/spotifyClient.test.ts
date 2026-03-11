@@ -5,6 +5,17 @@ const { gotGetMock } = vi.hoisted(() => {
   return { gotGetMock };
 });
 
+const { loggerMock, createChildLoggerMock } = vi.hoisted(() => {
+  const loggerMock = {
+    info: vi.fn(),
+    error: vi.fn(),
+    appendKeys: vi.fn(),
+    addContext: vi.fn(),
+  };
+  const createChildLoggerMock = vi.fn(() => loggerMock);
+  return { loggerMock, createChildLoggerMock };
+});
+
 vi.mock('got', () => ({
   default: {
     get: gotGetMock,
@@ -15,12 +26,16 @@ vi.mock('../../lib/retry.js', () => ({
   withRetry: async <T>(fn: () => Promise<T>) => fn(),
 }));
 
+vi.mock('../../lib/logger.js', () => ({
+  logger: loggerMock,
+  createChildLogger: createChildLoggerMock,
+}));
+
 import { getFollowedArtists, getArtistAlbums } from '../spotifyClient.js';
 
 describe('spotifyClient', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(console, 'info').mockImplementation(() => undefined);
   });
 
   describe('getFollowedArtists', () => {

@@ -13,6 +13,7 @@ import { putSyncStatus } from '../db/sync.js';
 import { updateSyncStatus } from '../db/users.js';
 import type { Release } from '../db/releases.js';
 import type { SpotifyAlbum } from './spotifyClient.js';
+import { createChildLogger, logUnknownError } from '../lib/logger.js';
 
 const CONCURRENCY = 5;
 
@@ -54,7 +55,8 @@ async function processBatch<T, R>(
 export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Promise<void> {
   const now = Date.now();
   const currentYear = new Date().getFullYear().toString();
-  console.info('sync.start', { spotifyId, syncType });
+  const log = createChildLogger({ operation: 'runSync', spotifyId, syncType });
+  log.info('Sync started');
 
   await putSyncStatus(spotifyId, {
     status: 'running',
@@ -67,13 +69,13 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
   await updateSyncStatus(spotifyId, 'running');
 
   try {
-    console.info('sync.auth.fetchToken.start', { spotifyId, syncType });
+    log.info('Fetching access token for sync');
     const accessToken = await getValidAccessToken(spotifyId);
-    console.info('sync.auth.fetchToken.done', { spotifyId, syncType });
+    log.info('Fetched access token for sync');
 
-    console.info('sync.followedArtists.start', { spotifyId, syncType });
+    log.info('Fetching followed artists');
     const artists = await getFollowedArtists(accessToken);
-    console.info('sync.followedArtists.done', { spotifyId, syncType, artistCount: artists.length });
+    log.info('Fetched followed artists', { artistCount: artists.length });
 
     await putSyncStatus(spotifyId, {
       status: 'running',
@@ -92,9 +94,7 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
     let processedCount = 0;
 
     await processBatch(artists, CONCURRENCY, async (artist) => {
-      console.info('sync.artist.start', {
-        spotifyId,
-        syncType,
+      log.info('Processing artist releases', {
         artistId: artist.id,
         artistName: artist.name,
         processedArtists: processedCount,
@@ -110,9 +110,7 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
 
       if (!releases) {
         // Fetch fresh from Spotify
-        console.info('sync.artist.albums.fetch.start', {
-          spotifyId,
-          syncType,
+        log.info('Fetching artist albums from Spotify', {
           artistId: artist.id,
         });
         const freshToken = await getValidAccessToken(spotifyId);
@@ -121,9 +119,7 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
           artist.id,
           syncType === 'quick' ? { stopAfterYear: currentYear } : {},
         );
-        console.info('sync.artist.albums.fetch.done', {
-          spotifyId,
-          syncType,
+        log.info('Fetched artist albums from Spotify', {
           artistId: artist.id,
           albumCount: albums.length,
         });
@@ -163,9 +159,7 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
         startedAt: now,
         updatedAt: Date.now(),
       });
-      console.info('sync.artist.done', {
-        spotifyId,
-        syncType,
+      log.info('Finished processing artist releases', {
         artistId: artist.id,
         processedArtists: processedCount,
         totalArtists: artists.length,
@@ -198,10 +192,10 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
     const syncOpts =
       syncType === 'quick' ? { lastQuickSyncAt: syncTimestamp } : { lastFullSyncAt: syncTimestamp };
     await updateSyncStatus(spotifyId, 'done', syncOpts);
-    console.info('sync.done', { spotifyId, syncType, artistCount: artists.length });
+    log.info('Sync completed', { artistCount: artists.length });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('sync.error', { spotifyId, syncType, message, err });
+    logUnknownError(log, 'Sync failed', err, { message });
     await putSyncStatus(spotifyId, {
       status: 'error',
       syncType,

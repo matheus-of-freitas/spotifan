@@ -6,6 +6,7 @@ import {
   getGenresIndex,
 } from '../db/releases.js';
 import type { HonoEnv } from '../lib/honoTypes.js';
+import { getContextLogger } from '../lib/logger.js';
 
 type SortField = 'date' | 'artist' | 'title';
 
@@ -19,6 +20,7 @@ function parseSort(value: string | undefined): SortField {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function handleReleases(c: Context<HonoEnv>): Promise<Response> {
+  const log = getContextLogger(c);
   const spotifyId = c.get('spotifyId');
   const year = c.req.query('year');
   const albumType = c.req.query('type');
@@ -35,6 +37,18 @@ export async function handleReleases(c: Context<HonoEnv>): Promise<Response> {
   const genresParam = c.req.query('genres');
   const genres = genresParam ? genresParam.split(',').filter(Boolean) : undefined;
 
+  log.info('Fetching releases', {
+    spotifyId,
+    sort,
+    year,
+    albumType,
+    limit: limit ?? null,
+    hasCursor: Boolean(cursor),
+    genreCount: genres?.length ?? 0,
+    startDate: startDate ?? null,
+    endDate: endDate ?? null,
+  });
+
   if (sort === 'date') {
     const result = await queryUserReleases(spotifyId, {
       year,
@@ -49,6 +63,7 @@ export async function handleReleases(c: Context<HonoEnv>): Promise<Response> {
   }
 
   // For artist/title sort: fetch all, sort in-memory, paginate with offset cursor
+  log.info('Using in-memory release sort', { spotifyId, sort });
   const all = await queryAllUserReleases(spotifyId, { year, albumType });
 
   const sortKey = sort === 'artist' ? 'artistName' : 'title';
@@ -63,6 +78,10 @@ export async function handleReleases(c: Context<HonoEnv>): Promise<Response> {
       };
       offset = decoded.offset ?? 0;
     } catch {
+      log.error('Failed to decode releases cursor, defaulting to first page', {
+        spotifyId,
+        sort,
+      });
       offset = 0;
     }
   }
@@ -78,13 +97,17 @@ export async function handleReleases(c: Context<HonoEnv>): Promise<Response> {
 }
 
 export async function handleYears(c: Context<HonoEnv>): Promise<Response> {
+  const log = getContextLogger(c);
   const spotifyId = c.get('spotifyId');
+  log.info('Fetching years index', { spotifyId });
   const years = await getYearsIndex(spotifyId);
   return c.json({ years });
 }
 
 export async function handleGenres(c: Context<HonoEnv>): Promise<Response> {
+  const log = getContextLogger(c);
   const spotifyId = c.get('spotifyId');
+  log.info('Fetching genres index', { spotifyId });
   const genres = await getGenresIndex(spotifyId);
   return c.json({ genres });
 }
