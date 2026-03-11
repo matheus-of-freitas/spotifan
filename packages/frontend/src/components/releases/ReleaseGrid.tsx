@@ -2,6 +2,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useCallback } from 'react';
 import { fetchReleases } from '../../api/releases';
 import { useFilterStore } from '../../store/filterStore';
+import { useSearchReleases } from '../../hooks/useSearchReleases';
 import { ReleaseCard } from './ReleaseCard';
 
 export function ReleaseGrid() {
@@ -9,9 +10,18 @@ export function ReleaseGrid() {
   const sort = useFilterStore((s) => s.sort);
   const dateRange = useFilterStore((s) => s.dateRange);
   const genres = useFilterStore((s) => s.genres);
+  const search = useFilterStore((s) => s.search);
   const observerRef = useRef<HTMLDivElement>(null);
 
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery({
+  const isSearching = search.length > 0;
+
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading: isLoadingPaged,
+  } = useInfiniteQuery({
     queryKey: ['releases', { year, sort, dateRange, genres }],
     queryFn: ({ pageParam }) =>
       fetchReleases({
@@ -23,7 +33,10 @@ export function ReleaseGrid() {
       }),
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     initialPageParam: undefined as string | undefined,
+    enabled: !isSearching,
   });
+
+  const { releases: searchResults, isLoading: isLoadingSearch } = useSearchReleases();
 
   const handleObserver = useCallback(
     (entries: IntersectionObserverEntry[]) => {
@@ -43,7 +56,8 @@ export function ReleaseGrid() {
     return () => observer.disconnect();
   }, [handleObserver]);
 
-  const releases = data?.pages.flatMap((p) => p.items) ?? [];
+  const releases = isSearching ? searchResults : (data?.pages.flatMap((p) => p.items) ?? []);
+  const isLoading = isSearching ? isLoadingSearch : isLoadingPaged;
 
   if (isLoading) {
     return (
@@ -75,11 +89,15 @@ export function ReleaseGrid() {
           <ReleaseCard key={release.albumId} release={release} index={i} />
         ))}
       </div>
-      <div ref={observerRef} className="h-10" />
-      {isFetchingNextPage && (
-        <div className="flex justify-center py-4">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-spotify-green border-t-transparent" />
-        </div>
+      {!isSearching && (
+        <>
+          <div ref={observerRef} className="h-10" />
+          {isFetchingNextPage && (
+            <div className="flex justify-center py-4">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-spotify-green border-t-transparent" />
+            </div>
+          )}
+        </>
       )}
     </>
   );

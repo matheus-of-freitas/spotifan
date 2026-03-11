@@ -39,6 +39,7 @@ export async function fetchReleases(params: {
   sort?: string;
   dateRange?: string;
   genres?: string[];
+  all?: boolean;
 }): Promise<ReleasesPage> {
   const search = new URLSearchParams();
   if (params.year) search.set('year', params.year);
@@ -46,6 +47,7 @@ export async function fetchReleases(params: {
   if (params.limit) search.set('limit', String(params.limit));
   if (params.sort) search.set('sort', params.sort);
   if (params.genres && params.genres.length > 0) search.set('genres', params.genres.join(','));
+  if (params.all) search.set('all', 'true');
 
   if (params.dateRange) {
     const range = computeDateRange(params.dateRange);

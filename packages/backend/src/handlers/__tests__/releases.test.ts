@@ -153,6 +153,26 @@ describe('releases handlers', () => {
       expect(decoded).toEqual(lastKey);
     });
 
+    it('returns all releases without cursor when all=true', async () => {
+      sendMock.mockResolvedValueOnce({
+        Items: [
+          { albumId: 'alb1', title: 'A', artistName: 'X', releaseDate: '2024-01-01', year: '2024' },
+          { albumId: 'alb2', title: 'B', artistName: 'Y', releaseDate: '2024-02-01', year: '2024' },
+        ],
+        LastEvaluatedKey: undefined,
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/releases?all=true', {
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { items: unknown[]; nextCursor?: string };
+      expect(body.items).toHaveLength(2);
+      expect(body.nextCursor).toBeUndefined();
+    });
+
     it('sorts by artist name with in-memory sort', async () => {
       // queryAllUserReleases pages through all results
       sendMock.mockResolvedValueOnce({

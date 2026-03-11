@@ -7,11 +7,13 @@ interface FilterState {
   sort: SortField;
   dateRange: string | null;
   genres: string[];
+  search: string;
   setYear: (year: string | null) => void;
   setSort: (sort: SortField) => void;
   setDateRange: (dateRange: string | null) => void;
   toggleGenre: (genre: string) => void;
   setGenres: (genres: string[]) => void;
+  setSearch: (search: string) => void;
 }
 
 export const useFilterStore = create<FilterState>((set) => ({
@@ -19,6 +21,7 @@ export const useFilterStore = create<FilterState>((set) => ({
   sort: 'date',
   dateRange: null,
   genres: [],
+  search: '',
   setYear: (year) => set({ year, dateRange: null }),
   setSort: (sort) => set({ sort }),
   setDateRange: (dateRange) => set({ dateRange, year: null }),
@@ -29,4 +32,5 @@ export const useFilterStore = create<FilterState>((set) => ({
         : [...state.genres, genre],
     })),
   setGenres: (genres) => set({ genres }),
+  setSearch: (search) => set({ search }),
 }));

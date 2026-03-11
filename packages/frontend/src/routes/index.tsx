@@ -6,6 +6,7 @@ import { YearFilter } from '../components/releases/YearFilter';
 import { SortDropdown } from '../components/releases/SortDropdown';
 import { DateRangeFilter } from '../components/releases/DateRangeFilter';
 import { GenreFilter } from '../components/releases/GenreFilter';
+import { SearchInput } from '../components/releases/SearchInput';
 import { ReleaseGrid } from '../components/releases/ReleaseGrid';
 import { SyncProgress } from '../components/sync/SyncProgress';
 
@@ -43,6 +44,7 @@ function HomePage() {
             <SortDropdown />
             <DateRangeFilter />
             <GenreFilter />
+            <SearchInput />
           </div>
           <SyncProgress />
         </div>

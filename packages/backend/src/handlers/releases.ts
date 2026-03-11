@@ -37,6 +37,8 @@ export async function handleReleases(c: Context<HonoEnv>): Promise<Response> {
   const genresParam = c.req.query('genres');
   const genres = genresParam ? genresParam.split(',').filter(Boolean) : undefined;
 
+  const fetchAll = c.req.query('all') === 'true';
+
   log.info('Fetching releases', {
     spotifyId,
     sort,
@@ -47,7 +49,13 @@ export async function handleReleases(c: Context<HonoEnv>): Promise<Response> {
     genreCount: genres?.length ?? 0,
     startDate: startDate ?? null,
     endDate: endDate ?? null,
+    fetchAll,
   });
+
+  if (fetchAll) {
+    const all = await queryAllUserReleases(spotifyId, { year, albumType });
+    return c.json({ items: all });
+  }
 
   if (sort === 'date') {
     const result = await queryUserReleases(spotifyId, {
