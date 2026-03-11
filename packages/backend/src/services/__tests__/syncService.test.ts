@@ -572,6 +572,9 @@ describe('syncService', () => {
       'Some artists were skipped during sync',
       expect.objectContaining({ skippedCount: 1, totalArtists: 2 }),
     );
+
+    // Cooldown timestamp must NOT be updated when artists were skipped
+    expect(updateSyncStatusMock).toHaveBeenCalledWith('user1', 'done', undefined);
   });
 
   it('completes sync as done with 0 releases when all artists are rate-limited', async () => {
@@ -595,6 +598,9 @@ describe('syncService', () => {
       'Some artists were skipped during sync',
       expect.objectContaining({ skippedCount: 2, totalArtists: 2 }),
     );
+
+    // Cooldown timestamp must NOT be updated when artists were skipped
+    expect(updateSyncStatusMock).toHaveBeenCalledWith('user1', 'done', undefined);
   });
 
   it('skips artist that returns a 400 from Spotify and completes sync as done', async () => {
@@ -626,6 +632,9 @@ describe('syncService', () => {
       'Some artists were skipped during sync',
       expect.objectContaining({ skippedCount: 1, totalArtists: 2 }),
     );
+
+    // Cooldown timestamp must NOT be updated when artists were skipped
+    expect(updateSyncStatusMock).toHaveBeenCalledWith('user1', 'done', undefined);
   });
 
   it('stores an unknown error message when a non-Error failure happens after Spotify fetches succeed', async () => {

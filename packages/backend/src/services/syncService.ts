@@ -243,9 +243,12 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
       updatedAt: Date.now(),
     });
 
-    const syncTimestamp = Date.now();
     const syncOpts =
-      syncType === 'quick' ? { lastQuickSyncAt: syncTimestamp } : { lastFullSyncAt: syncTimestamp };
+      skippedCount === 0
+        ? syncType === 'quick'
+          ? { lastQuickSyncAt: Date.now() }
+          : { lastFullSyncAt: Date.now() }
+        : undefined;
     await updateSyncStatus(spotifyId, 'done', syncOpts);
     log.info('Sync completed', { artistCount: artists.length });
   } catch (err) {
