@@ -16,6 +16,11 @@ const { loggerMock, createChildLoggerMock } = vi.hoisted(() => {
   return { loggerMock, createChildLoggerMock };
 });
 
+const { withRetryMock } = vi.hoisted(() => {
+  const withRetryMock = vi.fn(async <T>(fn: () => Promise<T>) => fn());
+  return { withRetryMock };
+});
+
 vi.mock('got', () => ({
   default: {
     get: gotGetMock,
@@ -23,7 +28,7 @@ vi.mock('got', () => ({
 }));
 
 vi.mock('../../lib/retry.js', () => ({
-  withRetry: async <T>(fn: () => Promise<T>) => fn(),
+  withRetry: withRetryMock,
 }));
 
 vi.mock('../../lib/logger.js', () => ({
@@ -36,6 +41,7 @@ import { getFollowedArtists, getArtistAlbums } from '../spotifyClient.js';
 describe('spotifyClient', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    withRetryMock.mockImplementation(async <T>(fn: () => Promise<T>) => fn());
   });
 
   describe('getFollowedArtists', () => {
@@ -236,6 +242,109 @@ describe('spotifyClient', () => {
 
       await expect(getFollowedArtists('token')).rejects.toThrow('Network error');
     });
+
+    it('rethrows network errors with known codes', async () => {
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockRejectedValue(Object.assign(new Error('Timeout'), { code: 'ETIMEDOUT' })),
+      });
+
+      await expect(getFollowedArtists('token')).rejects.toThrow('Timeout');
+    });
+
+    it('rethrows errors with unknown codes', async () => {
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockRejectedValue(Object.assign(new Error('Unknown'), { code: 'EUNKNOWN' })),
+      });
+
+      await expect(getFollowedArtists('token')).rejects.toThrow('Unknown');
+    });
+
+    it('normalizes non-Error network failures in logs before rethrowing them', async () => {
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockRejectedValue({ code: 'ETIMEDOUT', message: 'Timeout' }),
+      });
+
+      await expect(getFollowedArtists('token')).rejects.toThrow('[object Object]');
+      expect(loggerMock.error).toHaveBeenCalledWith('Spotify API request failed', {
+        operation: 'followed_artists',
+        page: 1,
+        after: undefined,
+        attempt: 1,
+        url: 'https://api.spotify.com/v1/me/following?type=artist&limit=50',
+        category: 'network_error',
+        statusCode: null,
+        retryAfter: null,
+        code: 'ETIMEDOUT',
+        errorMessage: 'Unknown Spotify request failure',
+      });
+    });
+
+    it('logs primitive Spotify request failures as unknown errors', async () => {
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockRejectedValue('boom'),
+      });
+
+      await expect(getFollowedArtists('token')).rejects.toThrow('boom');
+      expect(loggerMock.error).toHaveBeenCalledWith('Spotify API request failed', {
+        operation: 'followed_artists',
+        page: 1,
+        after: undefined,
+        attempt: 1,
+        url: 'https://api.spotify.com/v1/me/following?type=artist&limit=50',
+        category: 'unknown_error',
+        statusCode: null,
+        retryAfter: null,
+        code: null,
+        errorMessage: 'Unknown Spotify request failure',
+      });
+    });
+
+    it('logs retry metadata when the retry layer retries a Spotify request', async () => {
+      withRetryMock.mockImplementationOnce(
+        async <T>(
+          fn: () => Promise<T>,
+          options?: {
+            onRetry?: (context: {
+              attempt: number;
+              cause: string;
+              delayMs: number;
+              elapsedMs: number;
+            }) => void;
+          },
+        ) => {
+          options?.onRetry?.({
+            attempt: 1,
+            cause: 'network_error',
+            delayMs: 1000,
+            elapsedMs: 200,
+          });
+          return fn();
+        },
+      );
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue({
+          artists: {
+            items: [],
+            next: null,
+            cursors: { after: null },
+            total: 0,
+          },
+        }),
+      });
+
+      await getFollowedArtists('token');
+
+      expect(loggerMock.info).toHaveBeenCalledWith('Retrying Spotify API request', {
+        operation: 'followed_artists',
+        page: 1,
+        after: undefined,
+        attempt: 1,
+        cause: 'network_error',
+        delayMs: 1000,
+        elapsedMs: 200,
+        url: 'https://api.spotify.com/v1/me/following?type=artist&limit=50',
+      });
+    });
   });
 
   describe('getArtistAlbums', () => {
@@ -308,6 +417,52 @@ describe('spotifyClient', () => {
       expect(result).toHaveLength(2);
       expect(gotGetMock).toHaveBeenCalledTimes(2);
       expect(gotGetMock.mock.calls[1]![0]).toContain('offset=50');
+    });
+
+    it('logs retry metadata for artist album requests when the retry layer retries', async () => {
+      withRetryMock.mockImplementationOnce(
+        async <T>(
+          fn: () => Promise<T>,
+          options?: {
+            onRetry?: (context: {
+              attempt: number;
+              cause: string;
+              delayMs: number;
+              elapsedMs: number;
+            }) => void;
+          },
+        ) => {
+          options?.onRetry?.({
+            attempt: 1,
+            cause: 'server_error',
+            delayMs: 1000,
+            elapsedMs: 150,
+          });
+          return fn();
+        },
+      );
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue({
+          items: [],
+          next: null,
+          total: 0,
+        }),
+      });
+
+      await getArtistAlbums('token', 'artist-1');
+
+      expect(loggerMock.info).toHaveBeenCalledWith('Retrying Spotify API request', {
+        operation: 'artist_albums',
+        artistId: 'artist-1',
+        offset: 0,
+        limit: 50,
+        stopAfterYear: undefined,
+        attempt: 1,
+        cause: 'server_error',
+        delayMs: 1000,
+        elapsedMs: 150,
+        url: 'https://api.spotify.com/v1/artists/artist-1/albums?include_groups=album&limit=50&offset=0',
+      });
     });
 
     it('stops paginating once pages are older than the quick sync cutoff year', async () => {

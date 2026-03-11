@@ -273,13 +273,15 @@ describe('syncService', () => {
   it('sets error status on failure', async () => {
     getFollowedArtistsMock.mockRejectedValue(new Error('API down'));
 
-    await expect(runSync('user1', 'full')).rejects.toThrow('API down');
+    await expect(runSync('user1', 'full')).rejects.toThrow(
+      'Followed artists request failed: API down',
+    );
 
     // Should set error status with syncType
     const lastSyncStatusCall = putSyncStatusMock.mock.calls.at(-1)![1];
     expect(lastSyncStatusCall.status).toBe('error');
     expect(lastSyncStatusCall.syncType).toBe('full');
-    expect(lastSyncStatusCall.errorMessage).toBe('API down');
+    expect(lastSyncStatusCall.errorMessage).toBe('Followed artists request failed: API down');
 
     expect(updateSyncStatusMock).toHaveBeenCalledWith('user1', 'error');
   });
@@ -287,10 +289,12 @@ describe('syncService', () => {
   it('sets error status with unknown message for non-Error throws', async () => {
     getFollowedArtistsMock.mockRejectedValue('string error');
 
-    await expect(runSync('user1', 'quick')).rejects.toBe('string error');
+    await expect(runSync('user1', 'quick')).rejects.toThrow(
+      'Followed artists request failed: Unknown error',
+    );
 
     const lastSyncStatusCall = putSyncStatusMock.mock.calls.at(-1)![1];
-    expect(lastSyncStatusCall.errorMessage).toBe('Unknown error');
+    expect(lastSyncStatusCall.errorMessage).toBe('Followed artists request failed: Unknown error');
     expect(lastSyncStatusCall.syncType).toBe('quick');
   });
 
@@ -470,5 +474,48 @@ describe('syncService', () => {
 
       expect(getArtistAlbumsMock).toHaveBeenCalledWith('access-token', 'a1', {});
     });
+  });
+
+  it('wraps artist album failures with stage-specific context', async () => {
+    getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+    getArtistReleasesCachedMock.mockResolvedValue(null);
+    getArtistAlbumsMock.mockRejectedValue(new Error('Spotify albums timeout'));
+
+    await expect(runSync('user1', 'full')).rejects.toThrow(
+      'Artist albums request failed: Spotify albums timeout',
+    );
+
+    const lastSyncStatusCall = putSyncStatusMock.mock.calls.at(-1)![1];
+    expect(lastSyncStatusCall.errorMessage).toBe(
+      'Artist albums request failed: Spotify albums timeout',
+    );
+  });
+
+  it('uses unknown error messaging when artist album fetch throws a non-Error value', async () => {
+    getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+    getArtistReleasesCachedMock.mockResolvedValue(null);
+    getArtistAlbumsMock.mockRejectedValue('timeout');
+
+    await expect(runSync('user1', 'full')).rejects.toThrow(
+      'Artist albums request failed: Unknown error',
+    );
+
+    const lastSyncStatusCall = putSyncStatusMock.mock.calls.at(-1)![1];
+    expect(lastSyncStatusCall.errorMessage).toBe('Artist albums request failed: Unknown error');
+  });
+
+  it('stores an unknown error message when a non-Error failure happens after Spotify fetches succeed', async () => {
+    getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+    getArtistReleasesCachedMock.mockResolvedValue(null);
+    getArtistAlbumsMock.mockResolvedValue([
+      makeAlbum('alb1', 'Album 1', '2024-03-15', 'a1', 'Artist 1'),
+    ]);
+    putYearsIndexMock.mockRejectedValue('write failed');
+
+    await expect(runSync('user1', 'full')).rejects.toBe('write failed');
+
+    const lastSyncStatusCall = putSyncStatusMock.mock.calls.at(-1)![1];
+    expect(lastSyncStatusCall.status).toBe('error');
+    expect(lastSyncStatusCall.errorMessage).toBe('Unknown error');
   });
 });

@@ -26,3 +26,9 @@ export class TooManyRequestsError extends AppError {
     super(429, 'Too many requests', 'RATE_LIMITED');
   }
 }
+
+export class RetryBudgetExceededError extends AppError {
+  constructor(message: string) {
+    super(504, message, 'RETRY_BUDGET_EXCEEDED');
+  }
+}

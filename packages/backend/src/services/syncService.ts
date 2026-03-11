@@ -74,7 +74,12 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
     log.info('Fetched access token for sync');
 
     log.info('Fetching followed artists');
-    const artists = await getFollowedArtists(accessToken);
+    let artists;
+    try {
+      artists = await getFollowedArtists(accessToken);
+    } catch (err) {
+      throw new Error(`Followed artists request failed: ${getErrorMessage(err)}`);
+    }
     log.info('Fetched followed artists', { artistCount: artists.length });
 
     await putSyncStatus(spotifyId, {
@@ -114,11 +119,16 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
           artistId: artist.id,
         });
         const freshToken = await getValidAccessToken(spotifyId);
-        const albums = await getArtistAlbums(
-          freshToken,
-          artist.id,
-          syncType === 'quick' ? { stopAfterYear: currentYear } : {},
-        );
+        let albums;
+        try {
+          albums = await getArtistAlbums(
+            freshToken,
+            artist.id,
+            syncType === 'quick' ? { stopAfterYear: currentYear } : {},
+          );
+        } catch (err) {
+          throw new Error(`Artist albums request failed: ${getErrorMessage(err)}`);
+        }
         log.info('Fetched artist albums from Spotify', {
           artistId: artist.id,
           albumCount: albums.length,
@@ -208,4 +218,8 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
     await updateSyncStatus(spotifyId, 'error');
     throw err;
   }
+}
+
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : 'Unknown error';
 }
