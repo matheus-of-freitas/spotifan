@@ -34,18 +34,19 @@ const { gotPostMock, gotGetMock } = vi.hoisted(() => {
   return { gotPostMock, gotGetMock };
 });
 
-const { loggerMock, createChildLoggerMock, getContextLoggerMock, logUnknownErrorMock } =
-  vi.hoisted(() => ({
-  loggerMock: {
-    info: vi.fn(),
-    error: vi.fn(),
-    appendKeys: vi.fn(),
-    addContext: vi.fn(),
-  },
-  createChildLoggerMock: vi.fn(),
-  getContextLoggerMock: vi.fn(),
-  logUnknownErrorMock: vi.fn(),
-}));
+const { loggerMock, createChildLoggerMock, getContextLoggerMock, logUnknownErrorMock } = vi.hoisted(
+  () => ({
+    loggerMock: {
+      info: vi.fn(),
+      error: vi.fn(),
+      appendKeys: vi.fn(),
+      addContext: vi.fn(),
+    },
+    createChildLoggerMock: vi.fn(),
+    getContextLoggerMock: vi.fn(),
+    logUnknownErrorMock: vi.fn(),
+  }),
+);
 
 vi.mock('got', () => ({
   default: {
@@ -293,9 +294,7 @@ describe('auth handlers', () => {
     });
 
     it('returns 500 when fetching the Spotify profile fails', async () => {
-      sendMock
-        .mockResolvedValueOnce({ Item: { verifier: 'v' } })
-        .mockResolvedValueOnce({});
+      sendMock.mockResolvedValueOnce({ Item: { verifier: 'v' } }).mockResolvedValueOnce({});
 
       gotPostMock.mockReturnValue({
         json: vi.fn().mockResolvedValue({

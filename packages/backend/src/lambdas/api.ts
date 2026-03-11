@@ -77,10 +77,12 @@ app.onError((err, c) => {
 });
 
 export { app };
-export const handler = async (event: Parameters<typeof honoHandler>[0], context: Parameters<typeof honoHandler>[1]) => {
+export const handler = async (
+  event: Parameters<typeof honoHandler>[0],
+  context: Parameters<typeof honoHandler>[1],
+) => {
   const requestContext = 'requestContext' in event ? event.requestContext : undefined;
-  const route =
-    'rawPath' in event ? event.rawPath : 'path' in event ? event.path : undefined;
+  const route = 'rawPath' in event ? event.rawPath : 'path' in event ? event.path : undefined;
   const method =
     requestContext && 'http' in requestContext
       ? requestContext.http.method

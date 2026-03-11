@@ -20,10 +20,7 @@ export function SyncProgress() {
     }
   }, []);
 
-  const {
-    data: status,
-    error: statusError,
-  } = useQuery({
+  const { data: status, error: statusError } = useQuery({
     queryKey: ['sync', 'status'],
     queryFn: fetchSyncStatus,
     refetchInterval: (query) => {
@@ -70,7 +67,11 @@ export function SyncProgress() {
   };
 
   const statusErrorMessage =
-    statusError instanceof Error ? statusError.message : statusError ? 'Failed to fetch sync status' : null;
+    statusError instanceof Error
+      ? statusError.message
+      : statusError
+        ? 'Failed to fetch sync status'
+        : null;
   const isRunning = status?.status === 'running' && !statusErrorMessage;
   const progress =
     isRunning && status.totalArtists > 0

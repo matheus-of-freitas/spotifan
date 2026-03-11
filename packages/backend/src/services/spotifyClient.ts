@@ -108,7 +108,9 @@ export async function getFollowedArtists(accessToken: string): Promise<SpotifyAr
     }
     if (page.artists.next !== null && page.artists.items.length === 0) {
       log.error('Spotify followed artists pagination returned an empty page before completion');
-      throw new Error('Spotify followed artists pagination returned an empty page before completion');
+      throw new Error(
+        'Spotify followed artists pagination returned an empty page before completion',
+      );
     }
 
     artists.push(...page.artists.items);

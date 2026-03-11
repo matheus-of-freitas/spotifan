@@ -10,7 +10,9 @@ export const logger = new Logger({
   serviceName: 'spotifan-backend',
 });
 
-export function compactLogContext(context: LogContext): Record<string, Exclude<LogValue, undefined>> {
+export function compactLogContext(
+  context: LogContext,
+): Record<string, Exclude<LogValue, undefined>> {
   return Object.fromEntries(
     Object.entries(context).filter(([, value]) => value !== undefined),
   ) as Record<string, Exclude<LogValue, undefined>>;
