@@ -44,6 +44,7 @@ const { updateSyncStatusMock } = vi.hoisted(() => ({
 const { loggerMock, createChildLoggerMock, logUnknownErrorMock } = vi.hoisted(() => ({
   loggerMock: {
     info: vi.fn(),
+    warn: vi.fn(),
     error: vi.fn(),
     appendKeys: vi.fn(),
     addContext: vi.fn(),
@@ -88,6 +89,7 @@ vi.mock('../../lib/logger.js', () => ({
 }));
 
 import { runSync } from '../syncService.js';
+import { RetryBudgetExceededError } from '../../lib/errors.js';
 
 const currentYear = new Date().getFullYear().toString();
 
@@ -529,6 +531,61 @@ describe('syncService', () => {
 
     const lastSyncStatusCall = putSyncStatusMock.mock.calls.at(-1)![1];
     expect(lastSyncStatusCall.errorMessage).toBe('Artist albums request failed: Unknown error');
+  });
+
+  it('skips rate-limited artist and completes sync as done', async () => {
+    getFollowedArtistsMock.mockResolvedValue([
+      { id: 'a1', name: 'Artist 1', genres: ['rock'] },
+      { id: 'a2', name: 'Artist 2', genres: ['pop'] },
+    ]);
+    getArtistReleasesCachedMock.mockResolvedValue(null);
+    getArtistAlbumsMock
+      .mockRejectedValueOnce(new RetryBudgetExceededError('Retry-After exceeds budget'))
+      .mockResolvedValueOnce([makeAlbum('alb1', 'Album 1', '2024-01-01', 'a2', 'Artist 2')]);
+
+    await runSync('user1', 'full');
+
+    // a1 was skipped — no writes for it; a2 was processed normally
+    expect(batchWriteUserReleasesMock).toHaveBeenCalledOnce();
+    const userReleases = batchWriteUserReleasesMock.mock.calls[0]![1];
+    expect(userReleases[0].artistId).toBe('a2');
+
+    // Sync should complete as done
+    const lastStatus = putSyncStatusMock.mock.calls.at(-1)![1];
+    expect(lastStatus.status).toBe('done');
+
+    // Warning should be logged for the skipped artist and the summary
+    expect(loggerMock.warn).toHaveBeenCalledWith(
+      'Skipping artist due to rate limit budget exceeded',
+      expect.objectContaining({ artistId: 'a1', artistName: 'Artist 1' }),
+    );
+    expect(loggerMock.warn).toHaveBeenCalledWith(
+      'Some artists were skipped due to rate limiting',
+      expect.objectContaining({ skippedCount: 1, totalArtists: 2 }),
+    );
+  });
+
+  it('completes sync as done with 0 releases when all artists are rate-limited', async () => {
+    getFollowedArtistsMock.mockResolvedValue([
+      { id: 'a1', name: 'Artist 1', genres: ['rock'] },
+      { id: 'a2', name: 'Artist 2', genres: ['pop'] },
+    ]);
+    getArtistReleasesCachedMock.mockResolvedValue(null);
+    getArtistAlbumsMock.mockRejectedValue(
+      new RetryBudgetExceededError('Retry-After exceeds budget'),
+    );
+
+    await runSync('user1', 'full');
+
+    expect(batchWriteUserReleasesMock).not.toHaveBeenCalled();
+
+    const lastStatus = putSyncStatusMock.mock.calls.at(-1)![1];
+    expect(lastStatus.status).toBe('done');
+
+    expect(loggerMock.warn).toHaveBeenCalledWith(
+      'Some artists were skipped due to rate limiting',
+      expect.objectContaining({ skippedCount: 2, totalArtists: 2 }),
+    );
   });
 
   it('stores an unknown error message when a non-Error failure happens after Spotify fetches succeed', async () => {

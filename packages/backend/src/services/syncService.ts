@@ -16,8 +16,9 @@ import { updateSyncStatus } from '../db/users.js';
 import type { Release, CachedArtist } from '../db/releases.js';
 import type { SpotifyAlbum } from './spotifyClient.js';
 import { createChildLogger, logUnknownError } from '../lib/logger.js';
+import { RetryBudgetExceededError } from '../lib/errors.js';
 
-const CONCURRENCY = 5;
+const CONCURRENCY = 1;
 
 function albumToRelease(
   album: SpotifyAlbum,
@@ -107,6 +108,7 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
     const allYears = new Set<string>();
     const allGenres = new Set<string>();
     let processedCount = 0;
+    let skippedCount = 0;
 
     await processBatch(artists, CONCURRENCY, async (artist) => {
       log.info('Processing artist releases', {
@@ -137,6 +139,14 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
             syncType === 'quick' ? { stopAfterYear: currentYear } : {},
           );
         } catch (err) {
+          if (err instanceof RetryBudgetExceededError) {
+            log.warn('Skipping artist due to rate limit budget exceeded', {
+              artistId: artist.id,
+              artistName: artist.name,
+            });
+            skippedCount++;
+            return;
+          }
           throw new Error(`Artist albums request failed: ${getErrorMessage(err)}`);
         }
         log.info('Fetched artist albums from Spotify', {
@@ -185,6 +195,13 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
         totalArtists: artists.length,
       });
     });
+
+    if (skippedCount > 0) {
+      log.warn('Some artists were skipped due to rate limiting', {
+        skippedCount,
+        totalArtists: artists.length,
+      });
+    }
 
     // Years index: for quick sync merge into existing; for full sync rebuild
     if (syncType === 'quick') {
