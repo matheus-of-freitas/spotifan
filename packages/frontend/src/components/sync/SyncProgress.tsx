@@ -58,6 +58,7 @@ export function SyncProgress() {
   }, []);
 
   const handleSync = async (syncType: 'quick' | 'full') => {
+    /* v8 ignore next -- buttons hidden when running; defensive guard only */
     if (isTriggerPending || isRunning) return;
     try {
       await triggerSync(syncType);

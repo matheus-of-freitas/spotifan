@@ -49,8 +49,21 @@ packages/
 ### Frontend
 
 - Framework: Vitest + React Testing Library + jsdom
-- Coverage: best-effort (no strict threshold)
+- Coverage: **100% line/function/branch/statement** — same target as backend; enforced via thresholds
+- Excluded from coverage: `src/main.tsx` (React entry point), `src/routeTree.gen.ts` (auto-generated)
+- If a line genuinely cannot be covered (e.g. third-party integration boundary), document the exception with a `/* v8 ignore next */` comment
 - Run: `pnpm --filter @spotifan/frontend test`
+- Coverage: `pnpm --filter @spotifan/frontend test:coverage`
+
+### E2E (Playwright)
+
+- Config: `playwright.config.ts` at project root
+- Tests: `e2e/` directory
+- Browser: Chromium only
+- API calls mocked via `page.route()` — no real backend required
+- Run: `pnpm test:e2e`
+- UI mode: `pnpm test:e2e:ui`
+- Requires frontend build: `pnpm --filter @spotifan/frontend build` before running
 
 ## Linting & Formatting
 
