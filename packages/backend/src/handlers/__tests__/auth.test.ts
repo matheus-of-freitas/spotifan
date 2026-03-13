@@ -217,6 +217,7 @@ describe('auth handlers', () => {
       const setCookieHeader = res.headers.get('set-cookie')!;
       expect(setCookieHeader).toContain('session=spotify-user-1');
       expect(setCookieHeader).toContain('HttpOnly');
+      expect(setCookieHeader).toContain('Max-Age=2592000');
     });
 
     it('uses __Host-session with Secure when IS_LOCAL is not set', async () => {
@@ -424,7 +425,7 @@ describe('auth handlers', () => {
       });
     });
 
-    it('returns 404 when user not in DB', async () => {
+    it('returns 401 and clears cookie when user not in DB', async () => {
       sendMock.mockResolvedValueOnce({ Item: undefined });
 
       const app = createApp();
@@ -441,7 +442,13 @@ describe('auth handlers', () => {
       const res = await app.request('/api/auth/me', {
         headers: { cookie: 'session=nonexistent' },
       });
-      expect(res.status).toBe(404);
+      expect(res.status).toBe(401);
+      const body = await res.json();
+      expect(body).toEqual({ error: 'Not authenticated' });
+      // Cookie should be cleared
+      const setCookieHeader = res.headers.get('set-cookie')!;
+      expect(setCookieHeader).toContain('session=');
+      expect(setCookieHeader).toContain('Max-Age=0');
     });
   });
 });

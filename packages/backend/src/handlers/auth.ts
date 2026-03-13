@@ -119,6 +119,7 @@ export async function handleCallback(c: Context<HonoEnv>): Promise<Response> {
     secure: !cookie.local,
     sameSite: 'Lax',
     path: '/',
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   });
   log.info('Spotify auth callback completed', { spotifyId: profile.id });
   return c.redirect('/');
@@ -136,7 +137,11 @@ export async function handleMe(c: Context<HonoEnv>): Promise<Response> {
   const log = getContextLogger(c);
   const spotifyId = c.get('spotifyId');
   const user = await getUser(spotifyId);
-  if (!user) throw new AppError(404, 'User not found');
+  if (!user) {
+    const cookie = getCookieConfig();
+    deleteCookie(c, cookie.name, { path: '/' });
+    throw new AppError(401, 'Not authenticated');
+  }
   log.info('Fetched authenticated user profile', { spotifyId });
   return c.json({
     spotifyId: user.spotifyId,

@@ -542,61 +542,68 @@ describe('syncService', () => {
     expect(lastSyncStatusCall.errorMessage).toBe('Artist albums request failed: Unknown error');
   });
 
-  it('skips rate-limited artist and completes sync as done', async () => {
+  it('aborts remaining artists after first rate limit and makes no further Spotify calls', async () => {
     getFollowedArtistsMock.mockResolvedValue([
       { id: 'a1', name: 'Artist 1', genres: ['rock'] },
       { id: 'a2', name: 'Artist 2', genres: ['pop'] },
+      { id: 'a3', name: 'Artist 3', genres: ['jazz'] },
     ]);
     getArtistReleasesCachedMock.mockResolvedValue(null);
-    getArtistAlbumsMock
-      .mockRejectedValueOnce(new RetryBudgetExceededError('Retry-After exceeds budget'))
-      .mockResolvedValueOnce([makeAlbum('alb1', 'Album 1', '2024-01-01', 'a2', 'Artist 2')]);
+    getArtistAlbumsMock.mockRejectedValueOnce(
+      new RetryBudgetExceededError('Retry-After exceeds budget'),
+    );
 
     await runSync('user1', 'full');
 
-    // a1 was skipped — no writes for it; a2 was processed normally
-    expect(batchWriteUserReleasesMock).toHaveBeenCalledOnce();
-    const userReleases = batchWriteUserReleasesMock.mock.calls[0]![1];
-    expect(userReleases[0].artistId).toBe('a2');
+    // Only one Spotify album call should have been made (for a1); a2 and a3 are aborted
+    expect(getArtistAlbumsMock).toHaveBeenCalledTimes(1);
+    expect(batchWriteUserReleasesMock).not.toHaveBeenCalled();
 
     // Sync should complete as done
     const lastStatus = putSyncStatusMock.mock.calls.at(-1)![1];
     expect(lastStatus.status).toBe('done');
 
-    // Warning should be logged for the skipped artist and the summary
+    // All 3 artists should be counted as skipped
     expect(loggerMock.warn).toHaveBeenCalledWith(
-      'Skipping artist due to rate limit budget exceeded',
+      'Rate limit exceeded — aborting remaining artists to avoid extending Spotify ban',
       expect.objectContaining({ artistId: 'a1', artistName: 'Artist 1' }),
     );
     expect(loggerMock.warn).toHaveBeenCalledWith(
       'Some artists were skipped during sync',
-      expect.objectContaining({ skippedCount: 1, totalArtists: 2 }),
+      expect.objectContaining({ skippedCount: 3, totalArtists: 3 }),
     );
 
     // Cooldown timestamp must NOT be updated when artists were skipped
     expect(updateSyncStatusMock).toHaveBeenCalledWith('user1', 'done', undefined);
   });
 
-  it('completes sync as done with 0 releases when all artists are rate-limited', async () => {
+  it('processes artists before rate limit, then aborts the rest', async () => {
     getFollowedArtistsMock.mockResolvedValue([
       { id: 'a1', name: 'Artist 1', genres: ['rock'] },
       { id: 'a2', name: 'Artist 2', genres: ['pop'] },
+      { id: 'a3', name: 'Artist 3', genres: ['jazz'] },
     ]);
     getArtistReleasesCachedMock.mockResolvedValue(null);
-    getArtistAlbumsMock.mockRejectedValue(
-      new RetryBudgetExceededError('Retry-After exceeds budget'),
-    );
+    getArtistAlbumsMock
+      .mockResolvedValueOnce([makeAlbum('alb1', 'Album 1', '2024-01-01', 'a1', 'Artist 1')])
+      .mockRejectedValueOnce(new RetryBudgetExceededError('Retry-After exceeds budget'));
 
     await runSync('user1', 'full');
 
-    expect(batchWriteUserReleasesMock).not.toHaveBeenCalled();
+    // a1 processed normally, a2 rate-limited, a3 aborted without Spotify call
+    expect(getArtistAlbumsMock).toHaveBeenCalledTimes(2);
+    expect(batchWriteUserReleasesMock).toHaveBeenCalledOnce();
+    const userReleases = batchWriteUserReleasesMock.mock.calls[0]![1];
+    expect(userReleases[0].artistId).toBe('a1');
 
+    // Sync should complete as done
     const lastStatus = putSyncStatusMock.mock.calls.at(-1)![1];
     expect(lastStatus.status).toBe('done');
 
+    // 2 artists skipped (a2 rate-limited + a3 aborted)
     expect(loggerMock.warn).toHaveBeenCalledWith(
       'Some artists were skipped during sync',
-      expect.objectContaining({ skippedCount: 2, totalArtists: 2 }),
+      expect.objectContaining({ skippedCount: 2, totalArtists: 3 }),
     );
 
     // Cooldown timestamp must NOT be updated when artists were skipped

@@ -19,7 +19,6 @@ import { createChildLogger, logUnknownError } from '../lib/logger.js';
 import { AppError, RetryBudgetExceededError } from '../lib/errors.js';
 import { sleep } from '../lib/retry.js';
 
-const CONCURRENCY = 1;
 const ARTIST_REQUEST_DELAY_MS = 100;
 
 function albumToRelease(
@@ -41,20 +40,6 @@ function albumToRelease(
     year,
     genres,
   };
-}
-
-async function processBatch<T, R>(
-  items: T[],
-  concurrency: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = [];
-  for (let i = 0; i < items.length; i += concurrency) {
-    const batch = items.slice(i, i + concurrency);
-    const batchResults = await Promise.all(batch.map(fn));
-    results.push(...batchResults);
-  }
-  return results;
 }
 
 export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Promise<void> {
@@ -112,7 +97,22 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
     let processedCount = 0;
     let skippedCount = 0;
 
-    await processBatch(artists, CONCURRENCY, async (artist) => {
+    let abortRemaining = false;
+    for (const artist of artists) {
+      if (abortRemaining) {
+        skippedCount++;
+        processedCount++;
+        await putSyncStatus(spotifyId, {
+          status: 'running',
+          syncType,
+          totalArtists: artists.length,
+          processedArtists: processedCount,
+          startedAt: now,
+          updatedAt: Date.now(),
+        });
+        continue;
+      }
+
       log.info('Processing artist releases', {
         artistId: artist.id,
         artistName: artist.name,
@@ -143,12 +143,16 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
           );
         } catch (err) {
           if (err instanceof RetryBudgetExceededError) {
-            log.warn('Skipping artist due to rate limit budget exceeded', {
-              artistId: artist.id,
-              artistName: artist.name,
-            });
+            log.warn(
+              'Rate limit exceeded — aborting remaining artists to avoid extending Spotify ban',
+              {
+                artistId: artist.id,
+                artistName: artist.name,
+              },
+            );
             skippedCount++;
             skippedThisArtist = true;
+            abortRemaining = true;
           } else if (err instanceof AppError && err.statusCode >= 400 && err.statusCode < 500) {
             log.warn('Skipping artist due to Spotify client error', {
               artistId: artist.id,
@@ -212,7 +216,7 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
         processedArtists: processedCount,
         totalArtists: artists.length,
       });
-    });
+    }
 
     if (skippedCount > 0) {
       log.warn('Some artists were skipped during sync', {
