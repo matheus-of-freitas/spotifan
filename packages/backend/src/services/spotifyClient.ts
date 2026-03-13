@@ -264,7 +264,6 @@ export async function getArtistAlbums(
   while (hasMore) {
     const params = new URLSearchParams({
       include_groups: 'album',
-      market: 'from_token',
       limit: String(limit),
       offset: String(offset),
     });
