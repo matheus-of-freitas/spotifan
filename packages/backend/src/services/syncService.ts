@@ -140,13 +140,10 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
             skippedCount++;
             skippedThisArtist = true;
             if (consecutiveRateLimits >= MAX_CONSECUTIVE_RATE_LIMITS) {
-              log.warn(
-                'Aborting remaining artists after consecutive rate limit failures',
-                {
-                  consecutiveRateLimits,
-                  remainingArtists: artists.length - processedCount - 1,
-                },
-              );
+              log.warn('Aborting remaining artists after consecutive rate limit failures', {
+                consecutiveRateLimits,
+                remainingArtists: artists.length - processedCount - 1,
+              });
               skippedCount += artists.length - processedCount - 1;
               processedCount++;
               await putSyncStatus(spotifyId, {
