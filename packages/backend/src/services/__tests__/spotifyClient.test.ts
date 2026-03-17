@@ -72,6 +72,7 @@ describe('spotifyClient', () => {
       expect(gotGetMock.mock.calls[0]![1]).toEqual({
         headers: { Authorization: 'Bearer token123' },
         timeout: { request: 30_000 },
+        retry: { limit: 0 },
       });
     });
 

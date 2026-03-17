@@ -20,6 +20,8 @@ import { AppError, RetryBudgetExceededError } from '../lib/errors.js';
 import { sleep } from '../lib/retry.js';
 
 const ARTIST_REQUEST_DELAY_MS = 100;
+const RATE_LIMIT_BACKOFF_MS = 30_000;
+const MAX_CONSECUTIVE_RATE_LIMITS = 3;
 
 function albumToRelease(
   album: SpotifyAlbum,
@@ -97,22 +99,8 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
     let processedCount = 0;
     let skippedCount = 0;
 
-    let abortRemaining = false;
+    let consecutiveRateLimits = 0;
     for (const artist of artists) {
-      if (abortRemaining) {
-        skippedCount++;
-        processedCount++;
-        await putSyncStatus(spotifyId, {
-          status: 'running',
-          syncType,
-          totalArtists: artists.length,
-          processedArtists: processedCount,
-          startedAt: now,
-          updatedAt: Date.now(),
-        });
-        continue;
-      }
-
       log.info('Processing artist releases', {
         artistId: artist.id,
         artistName: artist.name,
@@ -143,16 +131,32 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
           );
         } catch (err) {
           if (err instanceof RetryBudgetExceededError) {
-            log.warn(
-              'Rate limit exceeded — aborting remaining artists to avoid extending Spotify ban',
-              {
-                artistId: artist.id,
-                artistName: artist.name,
-              },
-            );
+            consecutiveRateLimits++;
+            log.warn('Rate limit exceeded — backing off before next artist', {
+              artistId: artist.id,
+              artistName: artist.name,
+              consecutiveRateLimits,
+            });
             skippedCount++;
             skippedThisArtist = true;
-            abortRemaining = true;
+            if (consecutiveRateLimits >= MAX_CONSECUTIVE_RATE_LIMITS) {
+              log.warn('Aborting remaining artists after consecutive rate limit failures', {
+                consecutiveRateLimits,
+                remainingArtists: artists.length - processedCount - 1,
+              });
+              skippedCount += artists.length - processedCount - 1;
+              processedCount++;
+              await putSyncStatus(spotifyId, {
+                status: 'running',
+                syncType,
+                totalArtists: artists.length,
+                processedArtists: processedCount,
+                startedAt: now,
+                updatedAt: Date.now(),
+              });
+              break;
+            }
+            await sleep(RATE_LIMIT_BACKOFF_MS);
           } else if (err instanceof AppError && err.statusCode >= 400 && err.statusCode < 500) {
             log.warn('Skipping artist due to Spotify client error', {
               artistId: artist.id,
@@ -167,6 +171,7 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
         }
 
         if (!skippedThisArtist && albums !== undefined) {
+          consecutiveRateLimits = 0;
           await sleep(ARTIST_REQUEST_DELAY_MS);
           log.info('Fetched artist albums from Spotify', {
             artistId: artist.id,
