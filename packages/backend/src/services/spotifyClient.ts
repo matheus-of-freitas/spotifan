@@ -139,6 +139,7 @@ async function requestSpotify<T>(
           .get(url, {
             headers: { Authorization: `Bearer ${accessToken}` },
             timeout: { request: REQUEST_TIMEOUT_MS },
+            retry: { limit: 0 },
           })
           .json<T>();
 
