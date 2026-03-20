@@ -373,7 +373,7 @@ describe('spotifyClient', () => {
       expect(result).toHaveLength(1);
       expect(result[0]!.id).toBe('alb1');
       expect(gotGetMock.mock.calls[0]![0]).toContain('include_groups=album');
-      expect(gotGetMock.mock.calls[0]![0]).toContain('limit=50');
+      expect(gotGetMock.mock.calls[0]![0]).toContain('limit=10');
     });
 
     it('paginates through multiple pages', async () => {
@@ -417,7 +417,7 @@ describe('spotifyClient', () => {
 
       expect(result).toHaveLength(2);
       expect(gotGetMock).toHaveBeenCalledTimes(2);
-      expect(gotGetMock.mock.calls[1]![0]).toContain('offset=50');
+      expect(gotGetMock.mock.calls[1]![0]).toContain('offset=10');
     });
 
     it('logs retry metadata for artist album requests when the retry layer retries', async () => {
@@ -456,13 +456,13 @@ describe('spotifyClient', () => {
         operation: 'artist_albums',
         artistId: 'artist-1',
         offset: 0,
-        limit: 50,
+        limit: 10,
         stopAfterYear: undefined,
         attempt: 1,
         cause: 'server_error',
         delayMs: 1000,
         elapsedMs: 150,
-        url: 'https://api.spotify.com/v1/artists/artist-1/albums?include_groups=album&limit=50&offset=0',
+        url: 'https://api.spotify.com/v1/artists/artist-1/albums?include_groups=album&limit=10&offset=0',
       });
     });
 

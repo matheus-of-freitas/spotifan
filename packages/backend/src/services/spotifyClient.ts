@@ -259,7 +259,7 @@ export async function getArtistAlbums(
   });
   const albums: SpotifyAlbum[] = [];
   let offset = 0;
-  const limit = 50;
+  const limit = 10;
   let hasMore = true;
 
   while (hasMore) {
