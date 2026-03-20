@@ -116,11 +116,9 @@ export function SyncProgress() {
           >
             <div className="h-2 w-full overflow-hidden rounded-full bg-spotify-gray-dark">
               {isRunning ? (
-                <motion.div
-                  className="h-full rounded-full bg-spotify-green"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progress}%` }}
-                  transition={{ duration: 0.3 }}
+                <div
+                  className="h-full rounded-full bg-spotify-green transition-[width] duration-300 ease-out"
+                  style={{ width: `${progress}%` }}
                 />
               ) : (
                 <motion.div
