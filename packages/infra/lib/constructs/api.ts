@@ -53,12 +53,19 @@ export class ApiConstruct extends Construct {
     props.secret.grantRead(apiHandler);
     props.secret.grantRead(syncWorker);
     syncWorker.grantInvoke(apiHandler);
-    syncWorker.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ['lambda:InvokeFunction'],
-        resources: [syncWorker.functionArn],
-      }),
-    );
+
+    // Self-invoke permission as a separate policy to avoid circular dependency.
+    // addToRolePolicy would add to DefaultPolicy, which the function DependsOn,
+    // creating a cycle: Function → DefaultPolicy → Function ARN.
+    const selfInvokePolicy = new iam.Policy(this, 'SyncWorkerSelfInvokePolicy', {
+      statements: [
+        new iam.PolicyStatement({
+          actions: ['lambda:InvokeFunction'],
+          resources: [syncWorker.functionArn],
+        }),
+      ],
+    });
+    syncWorker.role?.attachInlinePolicy(selfInvokePolicy);
 
     this.httpApi = new apigw.HttpApi(this, 'HttpApi', {
       apiName: 'spotifan-api',
