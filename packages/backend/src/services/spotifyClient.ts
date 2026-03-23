@@ -40,6 +40,7 @@ interface SpotifyAlbumsResponse {
 
 interface ArtistAlbumOptions {
   stopAfterYear?: string;
+  market?: string;
 }
 
 interface SpotifyRequestLogContext {
@@ -59,7 +60,19 @@ interface SpotifyErrorContext {
   retryAfter?: number;
   code?: string;
   message: string;
+  responseBody?: string;
   normalizedError: Error;
+}
+
+function extractSpotifyErrorDetail(body: unknown): string | undefined {
+  if (typeof body !== 'string' || body.length === 0) return undefined;
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: string } };
+    if (typeof parsed.error?.message === 'string') return parsed.error.message;
+  } catch {
+    // not JSON — fall through
+  }
+  return body.length > 200 ? body.slice(0, 200) : body;
 }
 
 function getSpotifyErrorContext(err: unknown): SpotifyErrorContext {
@@ -84,14 +97,17 @@ function getSpotifyErrorContext(err: unknown): SpotifyErrorContext {
       };
     }
 
+    const bodyDetail = extractSpotifyErrorDetail(response.body);
+    const message = bodyDetail
+      ? `Spotify API error: ${response.statusCode} — ${bodyDetail}`
+      : `Spotify API error: ${response.statusCode}`;
+
     return {
       category: 'spotify_http_error',
       statusCode: response.statusCode,
-      message: `Spotify API error: ${response.statusCode}`,
-      normalizedError: new AppError(
-        response.statusCode,
-        `Spotify API error: ${response.statusCode}`,
-      ),
+      message,
+      responseBody: typeof response.body === 'string' ? response.body : undefined,
+      normalizedError: new AppError(response.statusCode, message),
     };
   }
 
@@ -160,6 +176,7 @@ async function requestSpotify<T>(
           retryAfter: errorContext.retryAfter ?? null,
           code: errorContext.code ?? null,
           errorMessage: errorContext.message,
+          responseBody: errorContext.responseBody ?? null,
         });
         throw errorContext.normalizedError;
       }
@@ -268,6 +285,7 @@ export async function getArtistAlbums(
       limit: String(limit),
       offset: String(offset),
     });
+    if (options.market) params.set('market', options.market);
 
     const page = await requestSpotify<SpotifyAlbumsResponse>(
       accessToken,
@@ -303,6 +321,15 @@ export async function getArtistAlbums(
   }
 
   return albums;
+}
+
+export async function getSpotifyUserCountry(accessToken: string): Promise<string> {
+  const profile = await requestSpotify<{ country: string }>(
+    accessToken,
+    'https://api.spotify.com/v1/me',
+    { operation: 'followed_artists' },
+  );
+  return profile.country;
 }
 
 function isNetworkError(err: unknown): boolean {

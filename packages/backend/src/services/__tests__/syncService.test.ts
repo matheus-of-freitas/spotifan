@@ -1,10 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { getFollowedArtistsMock, getArtistAlbumsMock } = vi.hoisted(() => {
-  const getFollowedArtistsMock = vi.fn();
-  const getArtistAlbumsMock = vi.fn();
-  return { getFollowedArtistsMock, getArtistAlbumsMock };
-});
+const { getFollowedArtistsMock, getArtistAlbumsMock, getSpotifyUserCountryMock } = vi.hoisted(
+  () => {
+    const getFollowedArtistsMock = vi.fn();
+    const getArtistAlbumsMock = vi.fn();
+    const getSpotifyUserCountryMock = vi.fn();
+    return { getFollowedArtistsMock, getArtistAlbumsMock, getSpotifyUserCountryMock };
+  },
+);
 
 const { getValidAccessTokenMock } = vi.hoisted(() => {
   const getValidAccessTokenMock = vi.fn();
@@ -37,7 +40,9 @@ const { putSyncStatusMock } = vi.hoisted(() => ({
   putSyncStatusMock: vi.fn(),
 }));
 
-const { updateSyncStatusMock } = vi.hoisted(() => ({
+const { getUserMock, putUserMock, updateSyncStatusMock } = vi.hoisted(() => ({
+  getUserMock: vi.fn(),
+  putUserMock: vi.fn(),
   updateSyncStatusMock: vi.fn(),
 }));
 
@@ -65,6 +70,7 @@ vi.mock('../../lib/retry.js', () => ({
 vi.mock('../spotifyClient.js', () => ({
   getFollowedArtists: getFollowedArtistsMock,
   getArtistAlbums: getArtistAlbumsMock,
+  getSpotifyUserCountry: getSpotifyUserCountryMock,
 }));
 
 vi.mock('../tokenService.js', () => ({
@@ -88,6 +94,8 @@ vi.mock('../../db/sync.js', () => ({
 }));
 
 vi.mock('../../db/users.js', () => ({
+  getUser: getUserMock,
+  putUser: putUserMock,
   updateSyncStatus: updateSyncStatusMock,
 }));
 
@@ -119,6 +127,16 @@ describe('syncService', () => {
     vi.clearAllMocks();
     createChildLoggerMock.mockReturnValue(loggerMock);
     getValidAccessTokenMock.mockResolvedValue('access-token');
+    getUserMock.mockResolvedValue({
+      spotifyId: 'user1',
+      displayName: 'Test User',
+      country: 'BR',
+      encryptedRefreshToken: 'enc-refresh',
+      encryptedAccessToken: 'enc-access',
+      tokenExpiresAt: Date.now() + 3600000,
+      syncStatus: 'running',
+    });
+    putUserMock.mockResolvedValue(undefined);
     putSyncStatusMock.mockResolvedValue(undefined);
     updateSyncStatusMock.mockResolvedValue(undefined);
     batchWriteUserReleasesMock.mockResolvedValue(undefined);
@@ -414,6 +432,7 @@ describe('syncService', () => {
 
       expect(getArtistAlbumsMock).toHaveBeenCalledWith('access-token', 'a1', {
         stopAfterYear: currentYear,
+        market: 'BR',
       });
     });
 
@@ -510,7 +529,84 @@ describe('syncService', () => {
 
       await runSync('user1', 'full');
 
-      expect(getArtistAlbumsMock).toHaveBeenCalledWith('access-token', 'a1', {});
+      expect(getArtistAlbumsMock).toHaveBeenCalledWith('access-token', 'a1', { market: 'BR' });
+    });
+  });
+
+  describe('market / country', () => {
+    it('passes market to getArtistAlbums from user country', async () => {
+      getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockResolvedValue([
+        makeAlbum('alb1', 'Album 1', '2024-03-15', 'a1', 'Artist 1'),
+      ]);
+
+      await runSync('user1', 'full');
+
+      expect(getArtistAlbumsMock).toHaveBeenCalledWith(
+        'access-token',
+        'a1',
+        expect.objectContaining({ market: 'BR' }),
+      );
+    });
+
+    it('backfills country from Spotify when user has no country', async () => {
+      getUserMock.mockResolvedValue({
+        spotifyId: 'user1',
+        displayName: 'Test User',
+        encryptedRefreshToken: 'enc-refresh',
+        encryptedAccessToken: 'enc-access',
+        tokenExpiresAt: Date.now() + 3600000,
+        syncStatus: 'running',
+        // no country
+      });
+      getSpotifyUserCountryMock.mockResolvedValue('US');
+      getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockResolvedValue([
+        makeAlbum('alb1', 'Album 1', '2024-03-15', 'a1', 'Artist 1'),
+      ]);
+
+      await runSync('user1', 'full');
+
+      expect(getSpotifyUserCountryMock).toHaveBeenCalledWith('access-token');
+      expect(putUserMock).toHaveBeenCalledWith(
+        expect.objectContaining({ spotifyId: 'user1', country: 'US' }),
+      );
+      expect(getArtistAlbumsMock).toHaveBeenCalledWith(
+        'access-token',
+        'a1',
+        expect.objectContaining({ market: 'US' }),
+      );
+    });
+
+    it('does not backfill when user already has country', async () => {
+      getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockResolvedValue([]);
+
+      await runSync('user1', 'full');
+
+      expect(getSpotifyUserCountryMock).not.toHaveBeenCalled();
+      expect(putUserMock).not.toHaveBeenCalled();
+    });
+
+    it('skips putUser when getUser returns null during backfill', async () => {
+      getUserMock.mockResolvedValue(null);
+      getSpotifyUserCountryMock.mockResolvedValue('JP');
+      getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockResolvedValue([]);
+
+      await runSync('user1', 'full');
+
+      expect(getSpotifyUserCountryMock).toHaveBeenCalled();
+      expect(putUserMock).not.toHaveBeenCalled();
+      expect(getArtistAlbumsMock).toHaveBeenCalledWith(
+        'access-token',
+        'a1',
+        expect.objectContaining({ market: 'JP' }),
+      );
     });
   });
 

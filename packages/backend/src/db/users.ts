@@ -6,6 +6,7 @@ export interface UserMetadata {
   displayName: string;
   email?: string;
   imageUrl?: string;
+  country?: string;
   encryptedRefreshToken: string;
   encryptedAccessToken: string;
   tokenExpiresAt: number;

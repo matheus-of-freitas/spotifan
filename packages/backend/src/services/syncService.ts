@@ -1,4 +1,4 @@
-import { getFollowedArtists, getArtistAlbums } from './spotifyClient.js';
+import { getFollowedArtists, getArtistAlbums, getSpotifyUserCountry } from './spotifyClient.js';
 import { getValidAccessToken } from './tokenService.js';
 import {
   batchWriteUserReleases,
@@ -12,7 +12,7 @@ import {
   getArtistsIndex,
 } from '../db/releases.js';
 import { putSyncStatus } from '../db/sync.js';
-import { updateSyncStatus } from '../db/users.js';
+import { getUser, putUser, updateSyncStatus } from '../db/users.js';
 import type { Release, CachedArtist } from '../db/releases.js';
 import type { SpotifyAlbum } from './spotifyClient.js';
 import { createChildLogger, logUnknownError } from '../lib/logger.js';
@@ -64,6 +64,17 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
     log.info('Fetching access token for sync');
     const accessToken = await getValidAccessToken(spotifyId);
     log.info('Fetched access token for sync');
+
+    // Resolve user's market (country) for Spotify API calls
+    const user = await getUser(spotifyId);
+    let country = user?.country;
+    if (!country) {
+      log.info('Backfilling user country from Spotify profile');
+      country = await getSpotifyUserCountry(accessToken);
+      if (user) {
+        await putUser({ ...user, country });
+      }
+    }
 
     log.info('Fetching followed artists');
     let artists: CachedArtist[];
@@ -127,7 +138,9 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
           albums = await getArtistAlbums(
             freshToken,
             artist.id,
-            syncType === 'quick' ? { stopAfterYear: currentYear } : {},
+            syncType === 'quick'
+              ? { stopAfterYear: currentYear, market: country }
+              : { market: country },
           );
         } catch (err) {
           if (err instanceof RetryBudgetExceededError) {

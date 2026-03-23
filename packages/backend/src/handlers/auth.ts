@@ -13,6 +13,7 @@ interface SpotifyProfile {
   id: string;
   display_name: string;
   email: string;
+  country: string;
   images: Array<{ url: string }>;
 }
 
@@ -104,6 +105,7 @@ export async function handleCallback(c: Context<HonoEnv>): Promise<Response> {
     spotifyId: profile.id,
     displayName: profile.display_name,
     email: profile.email,
+    country: profile.country ?? existing?.country,
     imageUrl: profile.images[0]?.url,
     encryptedRefreshToken: encrypt(tokens.refresh_token ?? '', key),
     encryptedAccessToken: encrypt(tokens.access_token, key),

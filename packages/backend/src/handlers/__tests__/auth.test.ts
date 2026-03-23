@@ -205,6 +205,7 @@ describe('auth handlers', () => {
           id: 'spotify-user-1',
           display_name: 'Test User',
           email: 'test@example.com',
+          country: 'US',
           images: [{ url: 'https://img.spotify.com/avatar.jpg' }],
         }),
       });
@@ -218,6 +219,10 @@ describe('auth handlers', () => {
       expect(setCookieHeader).toContain('session=spotify-user-1');
       expect(setCookieHeader).toContain('HttpOnly');
       expect(setCookieHeader).toContain('Max-Age=2592000');
+
+      // Verify putUser received country
+      const putCall = sendMock.mock.calls[3]![0];
+      expect(putCall.input.Item.country).toBe('US');
     });
 
     it('uses __Host-session with Secure when IS_LOCAL is not set', async () => {
@@ -246,6 +251,7 @@ describe('auth handlers', () => {
           id: 'spotify-user-1',
           display_name: 'Test User',
           email: 'test@example.com',
+          country: 'US',
           images: [{ url: 'https://img.spotify.com/avatar.jpg' }],
         }),
       });
@@ -280,6 +286,7 @@ describe('auth handlers', () => {
           id: 'user-no-refresh',
           display_name: 'User',
           email: 'u@e.com',
+          country: 'BR',
           images: [{ url: 'https://img.spotify.com/pic.jpg' }],
         }),
       });
@@ -345,6 +352,7 @@ describe('auth handlers', () => {
           id: 'user1',
           display_name: 'User',
           email: 'u@e.com',
+          country: 'GB',
           images: [],
         }),
       });
@@ -365,6 +373,48 @@ describe('auth handlers', () => {
       expect(putCall.input.Item.lastFullSyncAt).toBe(1699000000000);
       // imageUrl should be undefined when images is empty
       expect(putCall.input.Item.imageUrl).toBeUndefined();
+      // country should come from profile
+      expect(putCall.input.Item.country).toBe('GB');
+    });
+
+    it('falls back to existing user country when profile country is missing', async () => {
+      sendMock
+        .mockResolvedValueOnce({ Item: { verifier: 'v' } }) // get pkce
+        .mockResolvedValueOnce({}) // delete pkce
+        .mockResolvedValueOnce({
+          Item: {
+            spotifyId: 'user1',
+            syncStatus: 'idle',
+            country: 'DE',
+          },
+        }) // getUser with existing country
+        .mockResolvedValueOnce({}); // putUser
+
+      gotPostMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue({
+          access_token: 'a',
+          refresh_token: 'r',
+          expires_in: 3600,
+          token_type: 'Bearer',
+        }),
+      });
+
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue({
+          id: 'user1',
+          display_name: 'User',
+          email: 'u@e.com',
+          // no country field in profile
+          images: [],
+        }),
+      });
+
+      const app = createApp();
+      await app.request('/api/auth/callback?code=c&state=s');
+
+      const putCall = sendMock.mock.calls[3]![0];
+      // Should fall back to existing country
+      expect(putCall.input.Item.country).toBe('DE');
     });
   });
 
