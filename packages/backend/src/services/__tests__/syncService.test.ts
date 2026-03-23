@@ -106,6 +106,7 @@ vi.mock('../../lib/logger.js', () => ({
 }));
 
 import { runSync } from '../syncService.js';
+import type { SyncContinuation } from '../syncService.js';
 import { AppError, RetryBudgetExceededError } from '../../lib/errors.js';
 
 const currentYear = new Date().getFullYear().toString();
@@ -844,5 +845,276 @@ describe('syncService', () => {
     const lastSyncStatusCall = putSyncStatusMock.mock.calls.at(-1)![1];
     expect(lastSyncStatusCall.status).toBe('error');
     expect(lastSyncStatusCall.errorMessage).toBe('Unknown error');
+  });
+
+  describe('adaptive throttling', () => {
+    it('uses 500ms base delay between artist fetches', async () => {
+      getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockResolvedValue([
+        makeAlbum('alb1', 'Album 1', '2024-01-01', 'a1', 'Artist 1'),
+      ]);
+
+      await runSync('user1', 'full');
+
+      expect(sleepMock).toHaveBeenCalledWith(500);
+    });
+
+    it('doubles delay after rate limit, then recovers on success', async () => {
+      getFollowedArtistsMock.mockResolvedValue([
+        { id: 'a1', name: 'Artist 1', genres: ['rock'] },
+        { id: 'a2', name: 'Artist 2', genres: ['pop'] },
+        { id: 'a3', name: 'Artist 3', genres: ['jazz'] },
+      ]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock
+        .mockRejectedValueOnce(new RetryBudgetExceededError('budget exceeded'))
+        .mockResolvedValueOnce([makeAlbum('alb2', 'Album 2', '2024-01-01', 'a2', 'Artist 2')])
+        .mockResolvedValueOnce([makeAlbum('alb3', 'Album 3', '2024-02-01', 'a3', 'Artist 3')]);
+
+      await runSync('user1', 'full');
+
+      // After rate limit: delay doubles from 500 to 1000
+      // After success on a2: recovers from 1000 to 900, sleep(900)
+      const sleepCalls = sleepMock.mock.calls.map((c: [number]) => c[0]);
+      // First sleep is the 30s backoff after rate limit
+      expect(sleepCalls[0]).toBe(30_000);
+      // Second sleep is the adaptive delay for a2 (doubled to 1000, then recovered to 900)
+      expect(sleepCalls[1]).toBe(900);
+      // Third sleep is the adaptive delay for a3 (recovered from 900 to 800)
+      expect(sleepCalls[2]).toBe(800);
+    });
+
+    it('caps adaptive delay at MAX_ARTIST_REQUEST_DELAY_MS (3000ms)', async () => {
+      getFollowedArtistsMock.mockResolvedValue([
+        { id: 'a1', name: 'Artist 1', genres: ['rock'] },
+        { id: 'a2', name: 'Artist 2', genres: ['pop'] },
+        { id: 'a3', name: 'Artist 3', genres: ['jazz'] },
+        { id: 'a4', name: 'Artist 4', genres: ['metal'] },
+      ]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      // Three consecutive rate limits (500 -> 1000 -> 2000 -> capped at 3000)
+      // then a success
+      getArtistAlbumsMock
+        .mockRejectedValueOnce(new RetryBudgetExceededError('budget exceeded'))
+        .mockRejectedValueOnce(new RetryBudgetExceededError('budget exceeded'))
+        .mockRejectedValueOnce(new RetryBudgetExceededError('budget exceeded'));
+
+      await runSync('user1', 'full');
+
+      // Aborted after 3 consecutive rate limits
+      // Delay evolution: 500 -> 1000 (rate limit) -> 2000 (rate limit) -> 3000 capped (rate limit)
+      // Sleep calls: 30_000 (backoff), 30_000 (backoff), no third backoff because abort
+      const sleepCalls = sleepMock.mock.calls.map((c: [number]) => c[0]);
+      expect(sleepCalls).toEqual([30_000, 30_000]);
+    });
+
+    it('never drops delay below base 500ms during recovery', async () => {
+      getFollowedArtistsMock.mockResolvedValue([
+        { id: 'a1', name: 'Artist 1', genres: ['rock'] },
+        { id: 'a2', name: 'Artist 2', genres: ['pop'] },
+      ]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock
+        .mockResolvedValueOnce([makeAlbum('alb1', 'Album 1', '2024-01-01', 'a1', 'Artist 1')])
+        .mockResolvedValueOnce([makeAlbum('alb2', 'Album 2', '2024-01-01', 'a2', 'Artist 2')]);
+
+      await runSync('user1', 'full');
+
+      // Both should use base delay of 500ms (no rate limit to increase it)
+      const sleepCalls = sleepMock.mock.calls.map((c: [number]) => c[0]);
+      expect(sleepCalls).toEqual([500, 500]);
+    });
+  });
+
+  describe('chunked sync (deadline & continuation)', () => {
+    it('returns SyncContinuation when deadline is exceeded', async () => {
+      getFollowedArtistsMock.mockResolvedValue([
+        { id: 'a1', name: 'Artist 1', genres: ['rock'] },
+        { id: 'a2', name: 'Artist 2', genres: ['pop'] },
+      ]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockResolvedValue([
+        makeAlbum('alb1', 'Album 1', '2024-01-01', 'a1', 'Artist 1'),
+      ]);
+
+      // Set deadline in the past so it triggers immediately after the first artist
+      const result = await runSync('user1', 'full', { deadlineMs: 0 });
+
+      expect(result).toBeDefined();
+      const continuation = result as SyncContinuation;
+      expect(continuation.artistIndex).toBe(0);
+      expect(continuation.skippedCount).toBe(0);
+      expect(continuation.startedAt).toEqual(expect.any(Number));
+      expect(continuation.accumulatedYears).toEqual([]);
+      expect(continuation.accumulatedGenres).toEqual([]);
+      expect(continuation.currentDelay).toBe(500);
+
+      // Should NOT write years/genres index or set sync to done
+      expect(putYearsIndexMock).not.toHaveBeenCalled();
+      expect(putGenresIndexMock).not.toHaveBeenCalled();
+      const lastStatus = putSyncStatusMock.mock.calls.at(-1)![1];
+      expect(lastStatus.status).toBe('running');
+    });
+
+    it('returns undefined when sync completes within deadline', async () => {
+      getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockResolvedValue([
+        makeAlbum('alb1', 'Album 1', '2024-01-01', 'a1', 'Artist 1'),
+      ]);
+
+      // Far future deadline
+      const result = await runSync('user1', 'full', { deadlineMs: Date.now() + 60_000 });
+
+      expect(result).toBeUndefined();
+      const lastStatus = putSyncStatusMock.mock.calls.at(-1)![1];
+      expect(lastStatus.status).toBe('done');
+    });
+
+    it('resumes from correct artist index when resumeState provided', async () => {
+      // Set up artists index (simulating prior chunk already persisted)
+      getArtistsIndexMock.mockResolvedValue([
+        { id: 'a1', name: 'Artist 1', genres: ['rock'] },
+        { id: 'a2', name: 'Artist 2', genres: ['pop'] },
+        { id: 'a3', name: 'Artist 3', genres: ['jazz'] },
+      ]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      // Only a3 will be fetched (a1 and a2 were processed in prior chunk)
+      getArtistAlbumsMock.mockResolvedValue([
+        makeAlbum('alb3', 'Album 3', '2024-06-01', 'a3', 'Artist 3'),
+      ]);
+
+      const resumeState: SyncContinuation = {
+        artistIndex: 2,
+        skippedCount: 0,
+        startedAt: Date.now() - 600_000,
+        accumulatedYears: ['2024'],
+        accumulatedGenres: ['rock', 'pop'],
+        currentDelay: 500,
+      };
+
+      const result = await runSync('user1', 'full', { resumeState });
+
+      expect(result).toBeUndefined();
+
+      // Should NOT call getFollowedArtists (uses index for resumed full sync)
+      expect(getFollowedArtistsMock).not.toHaveBeenCalled();
+      // Should read from artists index instead
+      expect(getArtistsIndexMock).toHaveBeenCalledWith('user1');
+
+      // Should only fetch albums for a3 (index 2)
+      expect(getArtistAlbumsMock).toHaveBeenCalledTimes(1);
+
+      // Should NOT set initial running status (already running)
+      const firstPutStatus = putSyncStatusMock.mock.calls[0]![1];
+      expect(firstPutStatus.processedArtists).toBe(2); // starts from 2
+
+      // Should merge accumulated years with new years
+      const yearsArg = putYearsIndexMock.mock.calls[0]![1] as string[];
+      expect(yearsArg).toContain('2024');
+
+      // Should merge accumulated genres with new genres
+      const genresArg = putGenresIndexMock.mock.calls[0]![1] as string[];
+      expect(genresArg).toContain('rock');
+      expect(genresArg).toContain('pop');
+      expect(genresArg).toContain('jazz');
+    });
+
+    it('does not set initial running status when resuming', async () => {
+      getArtistsIndexMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockResolvedValue([]);
+
+      const resumeState: SyncContinuation = {
+        artistIndex: 0,
+        skippedCount: 0,
+        startedAt: Date.now() - 60_000,
+        accumulatedYears: [],
+        accumulatedGenres: [],
+        currentDelay: 500,
+      };
+
+      await runSync('user1', 'full', { resumeState });
+
+      // updateSyncStatus should NOT be called with 'running' (that's the initial call)
+      const runningCalls = updateSyncStatusMock.mock.calls.filter(
+        (c: [string, string]) => c[1] === 'running',
+      );
+      expect(runningCalls).toHaveLength(0);
+    });
+
+    it('preserves adaptive delay across chunks', async () => {
+      getArtistsIndexMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockResolvedValue([
+        makeAlbum('alb1', 'Album 1', '2024-01-01', 'a1', 'Artist 1'),
+      ]);
+
+      const resumeState: SyncContinuation = {
+        artistIndex: 0,
+        skippedCount: 0,
+        startedAt: Date.now() - 60_000,
+        accumulatedYears: [],
+        accumulatedGenres: [],
+        currentDelay: 1500, // elevated from prior rate limits
+      };
+
+      await runSync('user1', 'full', { resumeState });
+
+      // Should use the preserved delay (1500 - 100 recovery = 1400)
+      expect(sleepMock).toHaveBeenCalledWith(1400);
+    });
+
+    it('re-reads existing album IDs on resume to include prior chunk writes', async () => {
+      // Simulate prior chunk having written alb1
+      getUserExistingAlbumIdsMock.mockResolvedValue(new Set(['alb1']));
+      getArtistsIndexMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockResolvedValue([
+        makeAlbum('alb1', 'Already Written', '2024-01-01', 'a1', 'Artist 1'),
+        makeAlbum('alb2', 'New Album', '2024-06-01', 'a1', 'Artist 1'),
+      ]);
+
+      const resumeState: SyncContinuation = {
+        artistIndex: 0,
+        skippedCount: 0,
+        startedAt: Date.now() - 60_000,
+        accumulatedYears: [],
+        accumulatedGenres: [],
+        currentDelay: 500,
+      };
+
+      await runSync('user1', 'full', { resumeState });
+
+      // Only alb2 should be written (alb1 already exists from prior chunk)
+      expect(batchWriteUserReleasesMock).toHaveBeenCalledOnce();
+      const userReleases = batchWriteUserReleasesMock.mock.calls[0]![1];
+      expect(userReleases).toHaveLength(1);
+      expect(userReleases[0].albumId).toBe('alb2');
+    });
+
+    it('preserves startedAt from resumeState across the entire sync', async () => {
+      const originalStartedAt = Date.now() - 600_000;
+      getArtistsIndexMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockResolvedValue([]);
+
+      const resumeState: SyncContinuation = {
+        artistIndex: 0,
+        skippedCount: 0,
+        startedAt: originalStartedAt,
+        accumulatedYears: [],
+        accumulatedGenres: [],
+        currentDelay: 500,
+      };
+
+      await runSync('user1', 'full', { resumeState });
+
+      // All putSyncStatus calls should use the original startedAt
+      for (const call of putSyncStatusMock.mock.calls) {
+        expect((call as [string, { startedAt: number }])[1].startedAt).toBe(originalStartedAt);
+      }
+    });
   });
 });

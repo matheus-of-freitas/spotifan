@@ -19,9 +19,20 @@ import { createChildLogger, logUnknownError } from '../lib/logger.js';
 import { AppError, RetryBudgetExceededError } from '../lib/errors.js';
 import { sleep } from '../lib/retry.js';
 
-const ARTIST_REQUEST_DELAY_MS = 100;
+const ARTIST_REQUEST_DELAY_MS = 500;
+const MAX_ARTIST_REQUEST_DELAY_MS = 3000;
+const DELAY_RECOVERY_MS = 100;
 const RATE_LIMIT_BACKOFF_MS = 30_000;
 const MAX_CONSECUTIVE_RATE_LIMITS = 3;
+
+export interface SyncContinuation {
+  artistIndex: number;
+  skippedCount: number;
+  startedAt: number;
+  accumulatedYears: string[];
+  accumulatedGenres: string[];
+  currentDelay: number;
+}
 
 function albumToRelease(
   album: SpotifyAlbum,
@@ -44,21 +55,32 @@ function albumToRelease(
   };
 }
 
-export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Promise<void> {
-  const now = Date.now();
+export async function runSync(
+  spotifyId: string,
+  syncType: 'quick' | 'full',
+  options?: {
+    resumeState?: SyncContinuation;
+    deadlineMs?: number;
+  },
+): Promise<SyncContinuation | undefined> {
+  const resumeState = options?.resumeState;
+  const deadlineMs = options?.deadlineMs;
+  const now = resumeState?.startedAt ?? Date.now();
   const currentYear = new Date().getFullYear().toString();
   const log = createChildLogger({ operation: 'runSync', spotifyId, syncType });
-  log.info('Sync started');
+  log.info(resumeState ? 'Sync resumed' : 'Sync started');
 
-  await putSyncStatus(spotifyId, {
-    status: 'running',
-    syncType,
-    totalArtists: 0,
-    processedArtists: 0,
-    startedAt: now,
-    updatedAt: now,
-  });
-  await updateSyncStatus(spotifyId, 'running');
+  if (!resumeState) {
+    await putSyncStatus(spotifyId, {
+      status: 'running',
+      syncType,
+      totalArtists: 0,
+      processedArtists: 0,
+      startedAt: now,
+      updatedAt: now,
+    });
+    await updateSyncStatus(spotifyId, 'running');
+  }
 
   try {
     log.info('Fetching access token for sync');
@@ -78,7 +100,7 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
 
     log.info('Fetching followed artists');
     let artists: CachedArtist[];
-    if (syncType === 'full') {
+    if (syncType === 'full' && !resumeState) {
       let rawArtists;
       try {
         rawArtists = await getFollowedArtists(accessToken);
@@ -93,11 +115,13 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
       log.info('Loaded artists from index', { artistCount: artists.length });
     }
 
+    const startIndex = resumeState?.artistIndex ?? 0;
+
     await putSyncStatus(spotifyId, {
       status: 'running',
       syncType,
       totalArtists: artists.length,
-      processedArtists: 0,
+      processedArtists: startIndex,
       startedAt: now,
       updatedAt: Date.now(),
     });
@@ -105,13 +129,33 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
     // Load existing album IDs to skip already-persisted albums
     const existingAlbumIds = await getUserExistingAlbumIds(spotifyId);
     const seenAlbumIds = new Set<string>(existingAlbumIds);
-    const allYears = new Set<string>();
-    const allGenres = new Set<string>();
-    let processedCount = 0;
-    let skippedCount = 0;
+    const allYears = new Set<string>(resumeState?.accumulatedYears ?? []);
+    const allGenres = new Set<string>(resumeState?.accumulatedGenres ?? []);
+    let processedCount = startIndex;
+    let skippedCount = resumeState?.skippedCount ?? 0;
+    let currentDelay = resumeState?.currentDelay ?? ARTIST_REQUEST_DELAY_MS;
 
     let consecutiveRateLimits = 0;
-    for (const artist of artists) {
+    for (let i = startIndex; i < artists.length; i++) {
+      // Check deadline before processing each artist
+      if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
+        log.info('Deadline reached, returning continuation', {
+          artistIndex: i,
+          processedArtists: processedCount,
+          totalArtists: artists.length,
+        });
+        return {
+          artistIndex: i,
+          skippedCount,
+          startedAt: now,
+          accumulatedYears: Array.from(allYears),
+          accumulatedGenres: Array.from(allGenres),
+          currentDelay,
+        };
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- bounded by loop condition
+      const artist = artists[i]!;
       log.info('Processing artist releases', {
         artistId: artist.id,
         artistName: artist.name,
@@ -181,11 +225,15 @@ export async function runSync(spotifyId: string, syncType: 'quick' | 'full'): Pr
           } else {
             throw new Error(`Artist albums request failed: ${getErrorMessage(err)}`);
           }
+          if (err instanceof RetryBudgetExceededError) {
+            currentDelay = Math.min(currentDelay * 2, MAX_ARTIST_REQUEST_DELAY_MS);
+          }
         }
 
         if (!skippedThisArtist && albums !== undefined) {
           consecutiveRateLimits = 0;
-          await sleep(ARTIST_REQUEST_DELAY_MS);
+          currentDelay = Math.max(ARTIST_REQUEST_DELAY_MS, currentDelay - DELAY_RECOVERY_MS);
+          await sleep(currentDelay);
           log.info('Fetched artist albums from Spotify', {
             artistId: artist.id,
             albumCount: albums.length,
