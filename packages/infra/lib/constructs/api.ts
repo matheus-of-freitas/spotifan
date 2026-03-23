@@ -1,4 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
@@ -52,7 +53,12 @@ export class ApiConstruct extends Construct {
     props.secret.grantRead(apiHandler);
     props.secret.grantRead(syncWorker);
     syncWorker.grantInvoke(apiHandler);
-    syncWorker.grantInvoke(syncWorker);
+    syncWorker.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['lambda:InvokeFunction'],
+        resources: [syncWorker.functionArn],
+      }),
+    );
 
     this.httpApi = new apigw.HttpApi(this, 'HttpApi', {
       apiName: 'spotifan-api',
