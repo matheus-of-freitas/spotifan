@@ -30,6 +30,8 @@ export class ApiConstruct extends Construct {
       },
     });
 
+    syncWorker.addEnvironment('SYNC_WORKER_FUNCTION_NAME', syncWorker.functionName);
+
     const apiHandler = new lambda.Function(this, 'ApiHandler', {
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'api.handler',
@@ -50,6 +52,7 @@ export class ApiConstruct extends Construct {
     props.secret.grantRead(apiHandler);
     props.secret.grantRead(syncWorker);
     syncWorker.grantInvoke(apiHandler);
+    syncWorker.grantInvoke(syncWorker);
 
     this.httpApi = new apigw.HttpApi(this, 'HttpApi', {
       apiName: 'spotifan-api',

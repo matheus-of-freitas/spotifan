@@ -41,7 +41,7 @@ export async function handleSync(c: Context<HonoEnv>): Promise<Response> {
   // Check if already running
   if (user.syncStatus === 'running') {
     const syncStatus = await getSyncStatus(spotifyId);
-    const isStale = !syncStatus || Date.now() - syncStatus.startedAt > STALE_SYNC_MS;
+    const isStale = !syncStatus || Date.now() - syncStatus.updatedAt > STALE_SYNC_MS;
 
     if (isStale) {
       log.error('Resetting stale running sync before starting a new one', { spotifyId, syncType });
@@ -102,7 +102,7 @@ export async function handleSyncStatus(c: Context<HonoEnv>): Promise<Response> {
     });
   }
 
-  if (status.status === 'running' && Date.now() - status.startedAt > STALE_SYNC_MS) {
+  if (status.status === 'running' && Date.now() - status.updatedAt > STALE_SYNC_MS) {
     log.error('Converting stale running sync status to error', {
       spotifyId,
       syncType: status.syncType,

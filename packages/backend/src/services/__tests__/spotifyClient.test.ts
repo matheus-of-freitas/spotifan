@@ -36,7 +36,7 @@ vi.mock('../../lib/logger.js', () => ({
   createChildLogger: createChildLoggerMock,
 }));
 
-import { getFollowedArtists, getArtistAlbums } from '../spotifyClient.js';
+import { getFollowedArtists, getArtistAlbums, getSpotifyUserCountry } from '../spotifyClient.js';
 
 describe('spotifyClient', () => {
   beforeEach(() => {
@@ -226,14 +226,16 @@ describe('spotifyClient', () => {
       await expect(getFollowedArtists('token')).rejects.toThrow('Too many requests');
     });
 
-    it('throws AppError on other HTTP errors', async () => {
+    it('throws AppError on other HTTP errors with body detail', async () => {
       gotGetMock.mockReturnValue({
         json: vi.fn().mockRejectedValue({
           response: { statusCode: 403, body: 'Forbidden' },
         }),
       });
 
-      await expect(getFollowedArtists('token')).rejects.toThrow('Spotify API error: 403');
+      await expect(getFollowedArtists('token')).rejects.toThrow(
+        'Spotify API error: 403 — Forbidden',
+      );
     });
 
     it('rethrows non-HTTP errors', async () => {
@@ -277,6 +279,7 @@ describe('spotifyClient', () => {
         retryAfter: null,
         code: 'ETIMEDOUT',
         errorMessage: 'Unknown Spotify request failure',
+        responseBody: null,
       });
     });
 
@@ -297,6 +300,7 @@ describe('spotifyClient', () => {
         retryAfter: null,
         code: null,
         errorMessage: 'Unknown Spotify request failure',
+        responseBody: null,
       });
     });
 
@@ -562,6 +566,155 @@ describe('spotifyClient', () => {
       });
 
       await expect(getArtistAlbums('token', 'a1')).rejects.toThrow('Too many requests');
+    });
+
+    it('includes market in URL when provided', async () => {
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue({
+          items: [],
+          next: null,
+          total: 0,
+        }),
+      });
+
+      await getArtistAlbums('token', 'a1', { market: 'BR' });
+
+      expect(gotGetMock.mock.calls[0]![0]).toContain('market=BR');
+    });
+
+    it('omits market from URL when not provided', async () => {
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue({
+          items: [],
+          next: null,
+          total: 0,
+        }),
+      });
+
+      await getArtistAlbums('token', 'a1');
+
+      expect(gotGetMock.mock.calls[0]![0]).not.toContain('market=');
+    });
+  });
+
+  describe('getSpotifyUserCountry', () => {
+    it('returns country from Spotify profile', async () => {
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue({ country: 'BR' }),
+      });
+
+      const country = await getSpotifyUserCountry('token123');
+
+      expect(country).toBe('BR');
+      expect(gotGetMock.mock.calls[0]![0]).toBe('https://api.spotify.com/v1/me');
+    });
+  });
+
+  describe('response body logging', () => {
+    it('extracts JSON error message from response body', async () => {
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockRejectedValue({
+          response: {
+            statusCode: 400,
+            body: JSON.stringify({ error: { message: 'Invalid market code' } }),
+          },
+        }),
+      });
+
+      await expect(getFollowedArtists('token')).rejects.toThrow(
+        'Spotify API error: 400 — Invalid market code',
+      );
+    });
+
+    it('uses raw body when JSON parsing fails', async () => {
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockRejectedValue({
+          response: { statusCode: 400, body: 'Bad Request' },
+        }),
+      });
+
+      await expect(getFollowedArtists('token')).rejects.toThrow(
+        'Spotify API error: 400 — Bad Request',
+      );
+    });
+
+    it('truncates long non-JSON body to 200 chars', async () => {
+      const longBody = 'x'.repeat(300);
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockRejectedValue({
+          response: { statusCode: 400, body: longBody },
+        }),
+      });
+
+      await expect(getFollowedArtists('token')).rejects.toThrow(
+        `Spotify API error: 400 — ${'x'.repeat(200)}`,
+      );
+    });
+
+    it('omits body detail when body is missing', async () => {
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockRejectedValue({
+          response: { statusCode: 500 },
+        }),
+      });
+
+      await expect(getFollowedArtists('token')).rejects.toThrow('Spotify API error: 500');
+    });
+
+    it('uses raw body when JSON is malformed', async () => {
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockRejectedValue({
+          response: { statusCode: 400, body: '{broken json' },
+        }),
+      });
+
+      await expect(getFollowedArtists('token')).rejects.toThrow(
+        'Spotify API error: 400 — {broken json',
+      );
+    });
+
+    it('omits body detail when body is empty string', async () => {
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockRejectedValue({
+          response: { statusCode: 400, body: '' },
+        }),
+      });
+
+      await expect(getFollowedArtists('token')).rejects.toThrow('Spotify API error: 400');
+    });
+
+    it('logs responseBody in error context', async () => {
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockRejectedValue({
+          response: { statusCode: 403, body: 'Forbidden' },
+        }),
+      });
+
+      await expect(getFollowedArtists('token')).rejects.toThrow();
+
+      expect(loggerMock.error).toHaveBeenCalledWith(
+        'Spotify API request failed',
+        expect.objectContaining({
+          responseBody: 'Forbidden',
+        }),
+      );
+    });
+
+    it('logs null responseBody when body is not a string', async () => {
+      gotGetMock.mockReturnValue({
+        json: vi.fn().mockRejectedValue({
+          response: { statusCode: 500 },
+        }),
+      });
+
+      await expect(getFollowedArtists('token')).rejects.toThrow();
+
+      expect(loggerMock.error).toHaveBeenCalledWith(
+        'Spotify API request failed',
+        expect.objectContaining({
+          responseBody: null,
+        }),
+      );
     });
   });
 });

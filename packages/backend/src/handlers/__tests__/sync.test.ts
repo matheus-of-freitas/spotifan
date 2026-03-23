@@ -202,15 +202,15 @@ describe('sync handlers', () => {
           lastFullSyncAt: Date.now() - 100000000,
         },
       });
-      // getSyncStatus returns stale sync (started 25 min ago)
+      // getSyncStatus returns stale sync (last updated 25 min ago)
       sendMock.mockResolvedValueOnce({
         Item: {
           status: 'running',
           syncType: 'quick',
           totalArtists: 10,
           processedArtists: 3,
-          startedAt: Date.now() - 25 * 60 * 1000, // 25 minutes ago
-          updatedAt: Date.now() - 20 * 60 * 1000,
+          startedAt: Date.now() - 30 * 60 * 1000, // 30 minutes ago
+          updatedAt: Date.now() - 25 * 60 * 1000, // 25 minutes ago
         },
       });
       // updateSyncStatus (reset user metadata to error)
@@ -533,8 +533,8 @@ describe('sync handlers', () => {
         syncType: 'quick',
         totalArtists: 100,
         processedArtists: 42,
-        startedAt: Date.now() - 25 * 60 * 1000, // 25 minutes ago
-        updatedAt: Date.now() - 20 * 60 * 1000,
+        startedAt: Date.now() - 30 * 60 * 1000, // 30 minutes ago
+        updatedAt: Date.now() - 25 * 60 * 1000, // 25 minutes ago
       };
       const lastFullSyncAt = Date.now() - 86_400_000;
       // getSyncStatus
