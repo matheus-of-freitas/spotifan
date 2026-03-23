@@ -19,10 +19,13 @@ export class ApiConstruct extends Construct {
   constructor(scope: Construct, id: string, props: ApiConstructProps) {
     super(scope, id);
 
+    const workerFunctionName = `${cdk.Stack.of(this).stackName}-sync-worker`;
+
     const syncWorker = new lambda.Function(this, 'SyncWorker', {
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'syncWorker.handler',
       code: lambda.Code.fromAsset('../backend/dist'),
+      functionName: workerFunctionName,
       memorySize: 1024,
       timeout: cdk.Duration.minutes(15),
       environment: {
@@ -31,7 +34,7 @@ export class ApiConstruct extends Construct {
       },
     });
 
-    syncWorker.addEnvironment('SYNC_WORKER_FUNCTION_NAME', syncWorker.functionName);
+    syncWorker.addEnvironment('SYNC_WORKER_FUNCTION_NAME', workerFunctionName);
 
     const apiHandler = new lambda.Function(this, 'ApiHandler', {
       runtime: lambda.Runtime.NODEJS_22_X,
@@ -42,7 +45,7 @@ export class ApiConstruct extends Construct {
       environment: {
         TABLE_NAME: props.table.tableName,
         SECRET_NAME: props.secret.secretName,
-        SYNC_WORKER_FUNCTION_NAME: syncWorker.functionName,
+        SYNC_WORKER_FUNCTION_NAME: workerFunctionName,
       },
     });
 
@@ -61,7 +64,13 @@ export class ApiConstruct extends Construct {
       statements: [
         new iam.PolicyStatement({
           actions: ['lambda:InvokeFunction'],
-          resources: [syncWorker.functionArn],
+          resources: [
+            cdk.Stack.of(this).formatArn({
+              service: 'lambda',
+              resource: 'function',
+              resourceName: workerFunctionName,
+            }),
+          ],
         }),
       ],
     });
