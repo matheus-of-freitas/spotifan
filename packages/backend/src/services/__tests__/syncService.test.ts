@@ -876,7 +876,7 @@ describe('syncService', () => {
 
       // After rate limit: delay doubles from 500 to 1000
       // After success on a2: recovers from 1000 to 900, sleep(900)
-      const sleepCalls = sleepMock.mock.calls.map((c: [number]) => c[0]);
+      const sleepCalls = sleepMock.mock.calls.map((c: unknown[]) => c[0] as number);
       // First sleep is the 30s backoff after rate limit
       expect(sleepCalls[0]).toBe(30_000);
       // Second sleep is the adaptive delay for a2 (doubled to 1000, then recovered to 900)
@@ -905,7 +905,7 @@ describe('syncService', () => {
       // Aborted after 3 consecutive rate limits
       // Delay evolution: 500 -> 1000 (rate limit) -> 2000 (rate limit) -> 3000 capped (rate limit)
       // Sleep calls: 30_000 (backoff), 30_000 (backoff), no third backoff because abort
-      const sleepCalls = sleepMock.mock.calls.map((c: [number]) => c[0]);
+      const sleepCalls = sleepMock.mock.calls.map((c: unknown[]) => c[0] as number);
       expect(sleepCalls).toEqual([30_000, 30_000]);
     });
 
@@ -922,7 +922,7 @@ describe('syncService', () => {
       await runSync('user1', 'full');
 
       // Both should use base delay of 500ms (no rate limit to increase it)
-      const sleepCalls = sleepMock.mock.calls.map((c: [number]) => c[0]);
+      const sleepCalls = sleepMock.mock.calls.map((c: unknown[]) => c[0] as number);
       expect(sleepCalls).toEqual([500, 500]);
     });
   });
@@ -1039,7 +1039,7 @@ describe('syncService', () => {
 
       // updateSyncStatus should NOT be called with 'running' (that's the initial call)
       const runningCalls = updateSyncStatusMock.mock.calls.filter(
-        (c: [string, string]) => c[1] === 'running',
+        (c: unknown[]) => c[1] === 'running',
       );
       expect(runningCalls).toHaveLength(0);
     });

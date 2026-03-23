@@ -123,7 +123,9 @@ describe('syncWorker', () => {
     });
 
     // Verify the payload contains the continuation
-    const invokeCallArg = (InvokeCommand as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0] as {
+    const invokeCallArg = (InvokeCommand as unknown as ReturnType<typeof vi.fn>).mock.calls.at(
+      -1,
+    )![0] as {
       Payload: Buffer;
     };
     const payload = JSON.parse(invokeCallArg.Payload.toString()) as {
