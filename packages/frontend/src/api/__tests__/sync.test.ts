@@ -20,6 +20,20 @@ describe('triggerSync', () => {
     expect(fetch).toHaveBeenCalledWith('/api/sync?type=quick', { method: 'POST' });
   });
 
+  it('includes resume=true param when options.resume is true', async () => {
+    vi.mocked(fetch).mockResolvedValue({ ok: true } as Response);
+
+    await triggerSync('full', { resume: true });
+    expect(fetch).toHaveBeenCalledWith('/api/sync?type=full&resume=true', { method: 'POST' });
+  });
+
+  it('omits resume param when options.resume is false', async () => {
+    vi.mocked(fetch).mockResolvedValue({ ok: true } as Response);
+
+    await triggerSync('full', { resume: false });
+    expect(fetch).toHaveBeenCalledWith('/api/sync?type=full', { method: 'POST' });
+  });
+
   it('throws error message from response body', async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: false,

@@ -35,7 +35,7 @@ export async function withRetry<T>(
         const jitter = Math.random() * 1000;
         const delayMs = err.retryAfter * 1000 + jitter;
         const elapsedMs = Date.now() - startedAt;
-        throwIfRetryBudgetExceeded(retryOptions, delayMs, elapsedMs);
+        throwIfRetryBudgetExceeded(retryOptions, delayMs, elapsedMs, err.retryAfter);
         retryOptions.onRetry?.({
           attempt,
           cause: 'rate_limit',
@@ -69,12 +69,13 @@ function throwIfRetryBudgetExceeded(
   options: RetryOptions,
   nextDelayMs: number,
   elapsedMs: number,
+  retryAfterSeconds?: number,
 ): void {
   if (options.maxElapsedMs === undefined) return;
   if (elapsedMs + nextDelayMs <= options.maxElapsedMs) return;
 
   const operation = options.operation ?? 'Operation';
-  throw new RetryBudgetExceededError(`${operation} exceeded retry budget`);
+  throw new RetryBudgetExceededError(`${operation} exceeded retry budget`, retryAfterSeconds);
 }
 
 function isServerError(err: unknown): boolean {

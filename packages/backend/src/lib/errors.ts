@@ -28,7 +28,10 @@ export class TooManyRequestsError extends AppError {
 }
 
 export class RetryBudgetExceededError extends AppError {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    public readonly retryAfterSeconds?: number,
+  ) {
     super(504, message, 'RETRY_BUDGET_EXCEEDED');
   }
 }

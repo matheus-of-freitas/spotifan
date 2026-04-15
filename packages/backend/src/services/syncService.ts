@@ -24,6 +24,9 @@ const MAX_ARTIST_REQUEST_DELAY_MS = 3000;
 const DELAY_RECOVERY_MS = 100;
 const RATE_LIMIT_BACKOFF_MS = 30_000;
 const MAX_CONSECUTIVE_RATE_LIMITS = 3;
+const LONG_RATE_LIMIT_SECONDS = 3600;
+const SPOTIFY_REQUEST_BUDGET = 120;
+const PROACTIVE_PAUSE_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 
 export interface SyncContinuation {
   artistIndex: number;
@@ -32,6 +35,8 @@ export interface SyncContinuation {
   accumulatedYears: string[];
   accumulatedGenres: string[];
   currentDelay: number;
+  requestCount?: number;
+  pausedUntil?: number;
 }
 
 function albumToRelease(
@@ -98,12 +103,17 @@ export async function runSync(
       }
     }
 
+    let requestCount = resumeState?.requestCount ?? 0;
+
     log.info('Fetching followed artists');
     let artists: CachedArtist[];
     if (syncType === 'full' && !resumeState) {
       let rawArtists;
       try {
-        rawArtists = await getFollowedArtists(accessToken);
+        rawArtists = await getFollowedArtists(accessToken, {
+          /* v8 ignore next -- callback invoked by real Spotify pagination, not by mock */
+          onRequestComplete: () => requestCount++,
+        });
       } catch (err) {
         throw new Error(`Followed artists request failed: ${getErrorMessage(err)}`);
       }
@@ -151,7 +161,41 @@ export async function runSync(
           accumulatedYears: Array.from(allYears),
           accumulatedGenres: Array.from(allGenres),
           currentDelay,
+          requestCount,
         };
+      }
+
+      // Proactive request budget check before fetching from Spotify
+      if (requestCount >= SPOTIFY_REQUEST_BUDGET) {
+        const resumeAfter = Date.now() + PROACTIVE_PAUSE_COOLDOWN_MS;
+        log.info('Request budget reached, pausing sync', {
+          requestCount,
+          artistIndex: i,
+          processedArtists: processedCount,
+          totalArtists: artists.length,
+        });
+        const continuation: SyncContinuation = {
+          artistIndex: i,
+          skippedCount,
+          startedAt: now,
+          accumulatedYears: Array.from(allYears),
+          accumulatedGenres: Array.from(allGenres),
+          currentDelay,
+          requestCount: 0,
+          pausedUntil: resumeAfter,
+        };
+        await putSyncStatus(spotifyId, {
+          status: 'paused',
+          syncType,
+          totalArtists: artists.length,
+          processedArtists: processedCount,
+          startedAt: now,
+          updatedAt: Date.now(),
+          resumeAfter,
+          continuation,
+        });
+        await updateSyncStatus(spotifyId, 'paused');
+        return continuation;
       }
 
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- bounded by loop condition
@@ -183,11 +227,57 @@ export async function runSync(
             freshToken,
             artist.id,
             syncType === 'quick'
-              ? { stopAfterYear: currentYear, market: country }
-              : { market: country },
+              ? {
+                  stopAfterYear: currentYear,
+                  market: country,
+                  /* v8 ignore next -- callback invoked by Spotify client, not reachable through mock */
+                  onRequestComplete: () => requestCount++,
+                }
+              : {
+                  market: country,
+                  /* v8 ignore next -- callback invoked by Spotify client, not reachable through mock */
+                  onRequestComplete: () => requestCount++,
+                },
           );
         } catch (err) {
           if (err instanceof RetryBudgetExceededError) {
+            // Long rate limit (24h ban) — immediately pause instead of skipping
+            if (
+              err.retryAfterSeconds !== undefined &&
+              err.retryAfterSeconds > LONG_RATE_LIMIT_SECONDS
+            ) {
+              const resumeAfter = Date.now() + err.retryAfterSeconds * 1000;
+              log.warn('Long rate limit detected, pausing sync', {
+                retryAfterSeconds: err.retryAfterSeconds,
+                artistIndex: i,
+                processedArtists: processedCount,
+                totalArtists: artists.length,
+              });
+              const continuation: SyncContinuation = {
+                artistIndex: i,
+                skippedCount,
+                startedAt: now,
+                accumulatedYears: Array.from(allYears),
+                accumulatedGenres: Array.from(allGenres),
+                currentDelay,
+                requestCount: 0,
+                pausedUntil: resumeAfter,
+              };
+              await putSyncStatus(spotifyId, {
+                status: 'paused',
+                syncType,
+                totalArtists: artists.length,
+                processedArtists: processedCount,
+                startedAt: now,
+                updatedAt: Date.now(),
+                resumeAfter,
+                continuation,
+              });
+              await updateSyncStatus(spotifyId, 'paused');
+              return continuation;
+            }
+
+            // Short rate limit — existing skip+backoff behavior
             consecutiveRateLimits++;
             log.warn('Rate limit exceeded — backing off before next artist', {
               artistId: artist.id,

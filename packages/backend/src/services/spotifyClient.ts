@@ -41,6 +41,7 @@ interface SpotifyAlbumsResponse {
 interface ArtistAlbumOptions {
   stopAfterYear?: string;
   market?: string;
+  onRequestComplete?: () => void;
 }
 
 interface SpotifyRequestLogContext {
@@ -202,7 +203,10 @@ async function requestSpotify<T>(
   );
 }
 
-export async function getFollowedArtists(accessToken: string): Promise<SpotifyArtist[]> {
+export async function getFollowedArtists(
+  accessToken: string,
+  options?: { onRequestComplete?: () => void },
+): Promise<SpotifyArtist[]> {
   const log = createChildLogger({ operation: 'getFollowedArtists' });
   const artists: SpotifyArtist[] = [];
   let after: string | undefined;
@@ -230,6 +234,8 @@ export async function getFollowedArtists(accessToken: string): Promise<SpotifyAr
         after,
       },
     );
+
+    options?.onRequestComplete?.();
 
     const nextAfter = page.artists.cursors.after ?? undefined;
     log.info('Fetched Spotify followed artists page', {
@@ -276,7 +282,7 @@ export async function getArtistAlbums(
   });
   const albums: SpotifyAlbum[] = [];
   let offset = 0;
-  const limit = 10;
+  const limit = 50;
   let hasMore = true;
 
   while (hasMore) {
@@ -299,6 +305,7 @@ export async function getArtistAlbums(
       },
     );
 
+    options.onRequestComplete?.();
     log.info('Fetched Spotify artist albums page', {
       artistId,
       offset,

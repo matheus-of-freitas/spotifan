@@ -74,6 +74,36 @@ describe('sync', () => {
       expect(cmd.input.Item!['errorMessage']).toBe('Rate limited');
     });
 
+    it('uses extended TTL (~25h) for paused status', async () => {
+      sendMock.mockResolvedValueOnce({});
+      const pausedStatus: SyncStatus = {
+        ...testStatus,
+        status: 'paused',
+        resumeAfter: Date.now() + 86_294_000,
+        continuation: {
+          artistIndex: 50,
+          skippedCount: 0,
+          startedAt: Date.now(),
+          accumulatedYears: ['2024'],
+          accumulatedGenres: ['rock'],
+          currentDelay: 500,
+          requestCount: 0,
+          pausedUntil: Date.now() + 86_294_000,
+        },
+      };
+
+      await putSyncStatus('user1', pausedStatus);
+
+      const cmd = sendMock.mock.calls[0]![0] as PutCommand;
+      const ttl = cmd.input.Item!['ttl'] as number;
+      const now = Math.floor(Date.now() / 1000);
+      // TTL should be approximately 25 hours from now (90000 seconds)
+      expect(ttl).toBeGreaterThan(now + 89_000);
+      expect(ttl).toBeLessThanOrEqual(now + 90_000);
+      expect(cmd.input.Item!['status']).toBe('paused');
+      expect(cmd.input.Item!['continuation']).toBeDefined();
+    });
+
     it('writes full sync type', async () => {
       sendMock.mockResolvedValueOnce({});
       const fullStatus: SyncStatus = { ...testStatus, syncType: 'full' };

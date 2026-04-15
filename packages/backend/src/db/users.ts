@@ -10,7 +10,7 @@ export interface UserMetadata {
   encryptedRefreshToken: string;
   encryptedAccessToken: string;
   tokenExpiresAt: number;
-  syncStatus: 'idle' | 'running' | 'done' | 'error';
+  syncStatus: 'idle' | 'running' | 'done' | 'error' | 'paused';
   lastQuickSyncAt?: number;
   lastFullSyncAt?: number;
 }

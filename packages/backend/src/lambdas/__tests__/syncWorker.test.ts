@@ -163,6 +163,32 @@ describe('syncWorker', () => {
     );
   });
 
+  it('does not self-invoke when continuation has pausedUntil in the future', async () => {
+    process.env['SYNC_WORKER_FUNCTION_NAME'] = 'my-sync-worker';
+    const continuation: SyncContinuation = {
+      artistIndex: 100,
+      skippedCount: 0,
+      startedAt: Date.now() - 600_000,
+      accumulatedYears: ['2024'],
+      accumulatedGenres: ['rock'],
+      currentDelay: 500,
+      requestCount: 0,
+      pausedUntil: Date.now() + 86_294_000,
+    };
+    runSyncMock.mockResolvedValue(continuation);
+
+    await handler({ spotifyId: 'user1', syncType: 'full' }, lambdaContext);
+
+    expect(lambdaSendMock).not.toHaveBeenCalled();
+    expect(loggerMock.info).toHaveBeenCalledWith(
+      'Sync paused due to rate limit, skipping self-invoke',
+      expect.objectContaining({
+        artistIndex: 100,
+        pausedUntil: continuation.pausedUntil,
+      }),
+    );
+  });
+
   it('propagates errors from runSync', async () => {
     runSyncMock.mockRejectedValue(new Error('Sync failed'));
 

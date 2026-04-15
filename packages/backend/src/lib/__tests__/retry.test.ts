@@ -111,9 +111,7 @@ describe('retry', () => {
         maxElapsedMs: 1000,
         operation: 'Spotify followed artists fetch',
       }),
-    ).rejects.toThrow(
-      new RetryBudgetExceededError('Spotify followed artists fetch exceeded retry budget'),
-    );
+    ).rejects.toThrow('Spotify followed artists fetch exceeded retry budget');
   });
 
   it('reports retry metadata through onRetry', async () => {
@@ -195,7 +193,24 @@ describe('retry', () => {
         maxAttempts: 5,
         maxElapsedMs: 1000,
       }),
-    ).rejects.toThrow(new RetryBudgetExceededError('Operation exceeded retry budget'));
+    ).rejects.toThrow('Operation exceeded retry budget');
+  });
+
+  it('propagates retryAfterSeconds through RetryBudgetExceededError on rate limit', async () => {
+    const error = new TooManyRequestsError(86294);
+    const fn = vi.fn().mockRejectedValue(error);
+
+    try {
+      await withRetry(fn, {
+        maxAttempts: 5,
+        maxElapsedMs: 1000,
+        operation: 'Spotify fetch',
+      });
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(RetryBudgetExceededError);
+      expect((err as RetryBudgetExceededError).retryAfterSeconds).toBe(86294);
+    }
   });
 
   it('allows retries to continue when the retry budget has not been exceeded', async () => {

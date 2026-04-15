@@ -413,6 +413,292 @@ describe('sync handlers', () => {
       expect(res.status).toBe(202);
     });
 
+    it('resumes paused sync via Lambda when resume=true and cooldown elapsed', async () => {
+      process.env['SYNC_WORKER_FUNCTION_NAME'] = 'spotifan-sync-worker';
+      lambdaSendMock.mockResolvedValue({});
+      const continuation = {
+        artistIndex: 50,
+        skippedCount: 0,
+        startedAt: Date.now() - 600_000,
+        accumulatedYears: ['2024'],
+        accumulatedGenres: ['rock'],
+        currentDelay: 500,
+        requestCount: 0,
+        pausedUntil: Date.now() - 1000, // already elapsed
+      };
+      // getUser returns paused
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          spotifyId: 'user1',
+          syncStatus: 'paused',
+          lastFullSyncAt: Date.now() - 100_000_000,
+        },
+      });
+      // getSyncStatus returns paused with continuation
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          status: 'paused',
+          syncType: 'full',
+          totalArtists: 200,
+          processedArtists: 50,
+          startedAt: Date.now() - 600_000,
+          updatedAt: Date.now() - 300_000,
+          resumeAfter: Date.now() - 1000, // elapsed
+          continuation,
+        },
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/sync?resume=true', {
+        method: 'POST',
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(202);
+      const body = await res.json();
+      expect(body).toEqual({ ok: true, resumed: true });
+      expect(lambdaSendMock).toHaveBeenCalledOnce();
+      expect(runSyncMock).not.toHaveBeenCalled();
+    });
+
+    it('resumes paused sync locally when resume=true and no SYNC_WORKER_FUNCTION_NAME', async () => {
+      runSyncMock.mockResolvedValue(undefined);
+      const continuation = {
+        artistIndex: 50,
+        skippedCount: 0,
+        startedAt: Date.now() - 600_000,
+        accumulatedYears: ['2024'],
+        accumulatedGenres: ['rock'],
+        currentDelay: 500,
+        requestCount: 0,
+      };
+      // getUser returns paused
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          spotifyId: 'user1',
+          syncStatus: 'paused',
+          lastFullSyncAt: Date.now() - 100_000_000,
+        },
+      });
+      // getSyncStatus returns paused with continuation (no resumeAfter)
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          status: 'paused',
+          syncType: 'full',
+          totalArtists: 200,
+          processedArtists: 50,
+          startedAt: Date.now() - 600_000,
+          updatedAt: Date.now() - 300_000,
+          continuation,
+        },
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/sync?resume=true', {
+        method: 'POST',
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(202);
+      const body = await res.json();
+      expect(body).toEqual({ ok: true, resumed: true });
+      expect(runSyncMock).toHaveBeenCalledWith('user1', 'full', {
+        resumeState: continuation,
+      });
+    });
+
+    it('returns 429 when resume=true but resumeAfter has not elapsed', async () => {
+      const futureTime = Date.now() + 3_600_000; // 1 hour from now
+      // getUser returns paused
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          spotifyId: 'user1',
+          syncStatus: 'paused',
+          lastFullSyncAt: Date.now() - 100_000_000,
+        },
+      });
+      // getSyncStatus returns paused with future resumeAfter
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          status: 'paused',
+          syncType: 'full',
+          totalArtists: 200,
+          processedArtists: 50,
+          startedAt: Date.now() - 600_000,
+          updatedAt: Date.now() - 300_000,
+          resumeAfter: futureTime,
+          continuation: {
+            artistIndex: 50,
+            skippedCount: 0,
+            startedAt: Date.now() - 600_000,
+            accumulatedYears: ['2024'],
+            accumulatedGenres: ['rock'],
+            currentDelay: 500,
+          },
+        },
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/sync?resume=true', {
+        method: 'POST',
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(429);
+    });
+
+    it('resets stale paused sync (>25h) to error and starts fresh', async () => {
+      runSyncMock.mockResolvedValue(undefined);
+      // getUser returns paused
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          spotifyId: 'user1',
+          syncStatus: 'paused',
+          lastFullSyncAt: Date.now() - 100_000_000,
+        },
+      });
+      // getSyncStatus returns stale paused (updated 26h ago)
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          status: 'paused',
+          syncType: 'full',
+          totalArtists: 200,
+          processedArtists: 50,
+          startedAt: Date.now() - 30 * 60 * 60 * 1000,
+          updatedAt: Date.now() - 26 * 60 * 60 * 1000, // 26 hours ago
+          continuation: {
+            artistIndex: 50,
+            skippedCount: 0,
+            startedAt: Date.now() - 30 * 60 * 60 * 1000,
+            accumulatedYears: ['2024'],
+            accumulatedGenres: ['rock'],
+            currentDelay: 500,
+          },
+        },
+      });
+      // updateSyncStatus (reset to error)
+      sendMock.mockResolvedValueOnce({});
+      // putSyncStatus (reset SYNC#CURRENT to error)
+      sendMock.mockResolvedValueOnce({});
+
+      const app = createApp();
+      const res = await app.request('/api/sync?type=full', {
+        method: 'POST',
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(202);
+      expect(runSyncMock).toHaveBeenCalledWith('user1', 'full');
+    });
+
+    it('resets stale paused sync when no syncStatus exists', async () => {
+      runSyncMock.mockResolvedValue(undefined);
+      // getUser returns paused
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          spotifyId: 'user1',
+          syncStatus: 'paused',
+          lastFullSyncAt: Date.now() - 100_000_000,
+        },
+      });
+      // getSyncStatus returns null
+      sendMock.mockResolvedValueOnce({ Item: undefined });
+      // updateSyncStatus (reset to error)
+      sendMock.mockResolvedValueOnce({});
+
+      const app = createApp();
+      const res = await app.request('/api/sync?type=full', {
+        method: 'POST',
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(202);
+      expect(runSyncMock).toHaveBeenCalledWith('user1', 'full');
+    });
+
+    it('starts fresh sync when paused but resume=false (skips cooldown)', async () => {
+      runSyncMock.mockResolvedValue(undefined);
+      // getUser returns paused with recent lastFullSyncAt (would normally trigger cooldown)
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          spotifyId: 'user1',
+          syncStatus: 'paused',
+          lastFullSyncAt: Date.now() - 1000, // would be within cooldown for non-paused
+        },
+      });
+      // getSyncStatus returns valid paused
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          status: 'paused',
+          syncType: 'full',
+          totalArtists: 200,
+          processedArtists: 50,
+          startedAt: Date.now() - 600_000,
+          updatedAt: Date.now() - 300_000,
+          continuation: {
+            artistIndex: 50,
+            skippedCount: 0,
+            startedAt: Date.now() - 600_000,
+            accumulatedYears: ['2024'],
+            accumulatedGenres: ['rock'],
+            currentDelay: 500,
+          },
+        },
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/sync?type=full', {
+        method: 'POST',
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(202);
+      expect(runSyncMock).toHaveBeenCalledWith('user1', 'full');
+    });
+
+    it('handles local resume failure gracefully (logs but does not crash)', async () => {
+      runSyncMock.mockRejectedValue(new Error('Resume failed'));
+      const continuation = {
+        artistIndex: 50,
+        skippedCount: 0,
+        startedAt: Date.now() - 600_000,
+        accumulatedYears: ['2024'],
+        accumulatedGenres: ['rock'],
+        currentDelay: 500,
+      };
+      // getUser returns paused
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          spotifyId: 'user1',
+          syncStatus: 'paused',
+          lastFullSyncAt: Date.now() - 100_000_000,
+        },
+      });
+      // getSyncStatus returns paused with continuation
+      sendMock.mockResolvedValueOnce({
+        Item: {
+          status: 'paused',
+          syncType: 'full',
+          totalArtists: 200,
+          processedArtists: 50,
+          startedAt: Date.now() - 600_000,
+          updatedAt: Date.now() - 300_000,
+          continuation,
+        },
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/sync?resume=true', {
+        method: 'POST',
+        headers: { cookie: '__Host-session=user1' },
+      });
+
+      expect(res.status).toBe(202);
+      // Wait for the async catch to fire
+      await new Promise((r) => setTimeout(r, 10));
+      expect(logUnknownErrorMock).toHaveBeenCalled();
+    });
+
     it('handles local sync failure gracefully (logs but does not crash)', async () => {
       runSyncMock.mockRejectedValue(new Error('Sync failed'));
       sendMock.mockResolvedValueOnce({

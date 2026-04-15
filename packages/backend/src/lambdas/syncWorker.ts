@@ -32,28 +32,37 @@ export async function handler(event: SyncEvent, context: Context): Promise<void>
     });
 
     if (continuation) {
-      const functionName = process.env['SYNC_WORKER_FUNCTION_NAME'];
-      if (!functionName) {
-        throw new Error('SYNC_WORKER_FUNCTION_NAME not set — cannot self-invoke for continuation');
+      if (continuation.pausedUntil !== undefined && continuation.pausedUntil > Date.now()) {
+        syncLogger.info('Sync paused due to rate limit, skipping self-invoke', {
+          artistIndex: continuation.artistIndex,
+          pausedUntil: continuation.pausedUntil,
+        });
+      } else {
+        const functionName = process.env['SYNC_WORKER_FUNCTION_NAME'];
+        if (!functionName) {
+          throw new Error(
+            'SYNC_WORKER_FUNCTION_NAME not set — cannot self-invoke for continuation',
+          );
+        }
+
+        syncLogger.info('Self-invoking for continuation', {
+          artistIndex: continuation.artistIndex,
+        });
+
+        const lambda = new LambdaClient({});
+        const payload: SyncEvent = {
+          spotifyId: event.spotifyId,
+          syncType: event.syncType,
+          resumeState: continuation,
+        };
+        await lambda.send(
+          new InvokeCommand({
+            FunctionName: functionName,
+            InvocationType: 'Event',
+            Payload: Buffer.from(JSON.stringify(payload)),
+          }),
+        );
       }
-
-      syncLogger.info('Self-invoking for continuation', {
-        artistIndex: continuation.artistIndex,
-      });
-
-      const lambda = new LambdaClient({});
-      const payload: SyncEvent = {
-        spotifyId: event.spotifyId,
-        syncType: event.syncType,
-        resumeState: continuation,
-      };
-      await lambda.send(
-        new InvokeCommand({
-          FunctionName: functionName,
-          InvocationType: 'Event',
-          Payload: Buffer.from(JSON.stringify(payload)),
-        }),
-      );
     } else {
       syncLogger.info('Sync worker completed');
     }

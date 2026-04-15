@@ -431,10 +431,14 @@ describe('syncService', () => {
 
       await runSync('user1', 'quick');
 
-      expect(getArtistAlbumsMock).toHaveBeenCalledWith('access-token', 'a1', {
-        stopAfterYear: currentYear,
-        market: 'BR',
-      });
+      expect(getArtistAlbumsMock).toHaveBeenCalledWith(
+        'access-token',
+        'a1',
+        expect.objectContaining({
+          stopAfterYear: currentYear,
+          market: 'BR',
+        }),
+      );
     });
 
     it('merges new years into existing years index', async () => {
@@ -530,7 +534,11 @@ describe('syncService', () => {
 
       await runSync('user1', 'full');
 
-      expect(getArtistAlbumsMock).toHaveBeenCalledWith('access-token', 'a1', { market: 'BR' });
+      expect(getArtistAlbumsMock).toHaveBeenCalledWith(
+        'access-token',
+        'a1',
+        expect.objectContaining({ market: 'BR' }),
+      );
     });
   });
 
@@ -1066,6 +1074,30 @@ describe('syncService', () => {
       expect(sleepMock).toHaveBeenCalledWith(1400);
     });
 
+    it('resumes with requestCount from prior chunk', async () => {
+      getArtistsIndexMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockResolvedValue([
+        makeAlbum('alb1', 'Album 1', '2024-01-01', 'a1', 'Artist 1'),
+      ]);
+
+      const resumeState: SyncContinuation = {
+        artistIndex: 0,
+        skippedCount: 0,
+        startedAt: Date.now() - 60_000,
+        accumulatedYears: [],
+        accumulatedGenres: [],
+        currentDelay: 500,
+        requestCount: 50,
+      };
+
+      await runSync('user1', 'full', { resumeState });
+
+      // Should complete — requestCount 50 + 1 (from the fetch) is under 120 budget
+      const lastStatus = putSyncStatusMock.mock.calls.at(-1)![1];
+      expect(lastStatus.status).toBe('done');
+    });
+
     it('re-reads existing album IDs on resume to include prior chunk writes', async () => {
       // Simulate prior chunk having written alb1
       getUserExistingAlbumIdsMock.mockResolvedValue(new Set(['alb1']));
@@ -1094,6 +1126,23 @@ describe('syncService', () => {
       expect(userReleases[0].albumId).toBe('alb2');
     });
 
+    it('includes requestCount in continuation when deadline is reached', async () => {
+      getFollowedArtistsMock.mockResolvedValue([
+        { id: 'a1', name: 'Artist 1', genres: ['rock'] },
+        { id: 'a2', name: 'Artist 2', genres: ['pop'] },
+      ]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockResolvedValue([
+        makeAlbum('alb1', 'Album 1', '2024-01-01', 'a1', 'Artist 1'),
+      ]);
+
+      const result = await runSync('user1', 'full', { deadlineMs: 0 });
+
+      expect(result).toBeDefined();
+      const continuation = result as SyncContinuation;
+      expect(continuation.requestCount).toBe(0);
+    });
+
     it('preserves startedAt from resumeState across the entire sync', async () => {
       const originalStartedAt = Date.now() - 600_000;
       getArtistsIndexMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
@@ -1115,6 +1164,146 @@ describe('syncService', () => {
       for (const call of putSyncStatusMock.mock.calls) {
         expect((call as [string, { startedAt: number }])[1].startedAt).toBe(originalStartedAt);
       }
+    });
+  });
+
+  describe('long rate limit pause', () => {
+    it('pauses sync immediately when retryAfterSeconds exceeds threshold', async () => {
+      getFollowedArtistsMock.mockResolvedValue([
+        { id: 'a1', name: 'Artist 1', genres: ['rock'] },
+        { id: 'a2', name: 'Artist 2', genres: ['pop'] },
+      ]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockRejectedValueOnce(
+        new RetryBudgetExceededError('budget exceeded', 86294),
+      );
+
+      const result = await runSync('user1', 'full');
+
+      expect(result).toBeDefined();
+      const continuation = result as SyncContinuation;
+      expect(continuation.pausedUntil).toBeDefined();
+      expect(continuation.pausedUntil).toBeGreaterThan(Date.now());
+      expect(continuation.artistIndex).toBe(0);
+      expect(continuation.requestCount).toBe(0);
+
+      // Should NOT attempt more artists after long rate limit
+      expect(getArtistAlbumsMock).toHaveBeenCalledTimes(1);
+
+      // Should persist paused status
+      const lastStatus = putSyncStatusMock.mock.calls.at(-1)![1];
+      expect(lastStatus.status).toBe('paused');
+      expect(lastStatus.resumeAfter).toBeDefined();
+      expect(lastStatus.continuation).toBeDefined();
+
+      // Should update user sync status to paused
+      expect(updateSyncStatusMock).toHaveBeenCalledWith('user1', 'paused');
+    });
+
+    it('does not pause for short rate limits (retryAfterSeconds <= threshold)', async () => {
+      getFollowedArtistsMock.mockResolvedValue([
+        { id: 'a1', name: 'Artist 1', genres: ['rock'] },
+        { id: 'a2', name: 'Artist 2', genres: ['pop'] },
+      ]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock
+        .mockRejectedValueOnce(new RetryBudgetExceededError('budget exceeded', 30))
+        .mockResolvedValueOnce([makeAlbum('alb2', 'Album 2', '2024-01-01', 'a2', 'Artist 2')]);
+
+      const result = await runSync('user1', 'full');
+
+      // Short rate limit — should complete (skip+continue), not pause
+      expect(result).toBeUndefined();
+      const lastStatus = putSyncStatusMock.mock.calls.at(-1)![1];
+      expect(lastStatus.status).toBe('done');
+    });
+
+    it('does not pause when retryAfterSeconds is undefined', async () => {
+      getFollowedArtistsMock.mockResolvedValue([
+        { id: 'a1', name: 'Artist 1', genres: ['rock'] },
+        { id: 'a2', name: 'Artist 2', genres: ['pop'] },
+      ]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock
+        .mockRejectedValueOnce(new RetryBudgetExceededError('budget exceeded'))
+        .mockResolvedValueOnce([makeAlbum('alb2', 'Album 2', '2024-01-01', 'a2', 'Artist 2')]);
+
+      const result = await runSync('user1', 'full');
+
+      expect(result).toBeUndefined();
+      const lastStatus = putSyncStatusMock.mock.calls.at(-1)![1];
+      expect(lastStatus.status).toBe('done');
+    });
+
+    it('preserves accumulated years and genres when pausing', async () => {
+      getFollowedArtistsMock.mockResolvedValue([
+        { id: 'a1', name: 'Artist 1', genres: ['rock'] },
+        { id: 'a2', name: 'Artist 2', genres: ['pop'] },
+      ]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock
+        .mockResolvedValueOnce([makeAlbum('alb1', 'Album 1', '2024-01-01', 'a1', 'Artist 1')])
+        .mockRejectedValueOnce(new RetryBudgetExceededError('budget exceeded', 86294));
+
+      const result = await runSync('user1', 'full');
+
+      expect(result).toBeDefined();
+      const continuation = result as SyncContinuation;
+      expect(continuation.artistIndex).toBe(1);
+      expect(continuation.accumulatedYears).toContain('2024');
+      expect(continuation.accumulatedGenres).toContain('rock');
+    });
+  });
+
+  describe('proactive request budgeting', () => {
+    it('pauses when request budget is reached before hitting rate limit', async () => {
+      getArtistsIndexMock.mockResolvedValue([
+        { id: 'a1', name: 'Artist 1', genres: ['rock'] },
+        { id: 'a2', name: 'Artist 2', genres: ['pop'] },
+      ]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockResolvedValue([
+        makeAlbum('alb1', 'Album', '2024-01-01', 'a1', 'Artist 1'),
+      ]);
+
+      // Resume with requestCount already at budget
+      const resumeState: SyncContinuation = {
+        artistIndex: 0,
+        skippedCount: 0,
+        startedAt: Date.now() - 60_000,
+        accumulatedYears: [],
+        accumulatedGenres: [],
+        currentDelay: 500,
+        requestCount: 120,
+      };
+
+      const result = await runSync('user1', 'full', { resumeState });
+
+      expect(result).toBeDefined();
+      const continuation = result as SyncContinuation;
+      expect(continuation.pausedUntil).toBeDefined();
+      expect(continuation.requestCount).toBe(0); // reset for next chunk
+
+      // Should NOT fetch any artists (budget already exceeded)
+      expect(getArtistAlbumsMock).not.toHaveBeenCalled();
+
+      const lastStatus = putSyncStatusMock.mock.calls.at(-1)![1];
+      expect(lastStatus.status).toBe('paused');
+      expect(updateSyncStatusMock).toHaveBeenCalledWith('user1', 'paused');
+    });
+
+    it('does not pause when request count is under budget', async () => {
+      getFollowedArtistsMock.mockResolvedValue([{ id: 'a1', name: 'Artist 1', genres: ['rock'] }]);
+      getArtistReleasesCachedMock.mockResolvedValue(null);
+      getArtistAlbumsMock.mockResolvedValue([
+        makeAlbum('alb1', 'Album', '2024-01-01', 'a1', 'Artist 1'),
+      ]);
+
+      const result = await runSync('user1', 'full');
+
+      expect(result).toBeUndefined();
+      const lastStatus = putSyncStatusMock.mock.calls.at(-1)![1];
+      expect(lastStatus.status).toBe('done');
     });
   });
 });

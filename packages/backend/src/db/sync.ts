@@ -1,18 +1,24 @@
 import { PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient, getTableName } from './client.js';
+import type { SyncContinuation } from '../services/syncService.js';
 
 export interface SyncStatus {
-  status: 'running' | 'done' | 'error';
+  status: 'running' | 'done' | 'error' | 'paused';
   syncType: 'quick' | 'full';
   totalArtists: number;
   processedArtists: number;
   errorMessage?: string;
   startedAt: number;
   updatedAt: number;
+  resumeAfter?: number;
+  continuation?: SyncContinuation;
 }
 
 export async function putSyncStatus(spotifyId: string, status: SyncStatus): Promise<void> {
-  const ttl = Math.floor(Date.now() / 1000) + 3600; // +1h
+  const ttl =
+    status.status === 'paused'
+      ? Math.floor(Date.now() / 1000) + 90_000 // ~25h for paused
+      : Math.floor(Date.now() / 1000) + 3600; // +1h
   await docClient.send(
     new PutCommand({
       TableName: getTableName(),

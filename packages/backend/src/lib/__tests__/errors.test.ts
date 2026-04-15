@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { AppError, UnauthorizedError, NotFoundError, TooManyRequestsError } from '../errors.js';
+import {
+  AppError,
+  UnauthorizedError,
+  NotFoundError,
+  TooManyRequestsError,
+  RetryBudgetExceededError,
+} from '../errors.js';
 
 describe('errors', () => {
   describe('AppError', () => {
@@ -47,6 +53,21 @@ describe('errors', () => {
       expect(err.statusCode).toBe(429);
       expect(err.retryAfter).toBe(30);
       expect(err.code).toBe('RATE_LIMITED');
+    });
+  });
+
+  describe('RetryBudgetExceededError', () => {
+    it('has 504 status and message', () => {
+      const err = new RetryBudgetExceededError('Operation exceeded retry budget');
+      expect(err.statusCode).toBe(504);
+      expect(err.message).toBe('Operation exceeded retry budget');
+      expect(err.code).toBe('RETRY_BUDGET_EXCEEDED');
+      expect(err.retryAfterSeconds).toBeUndefined();
+    });
+
+    it('carries retryAfterSeconds when provided', () => {
+      const err = new RetryBudgetExceededError('budget exceeded', 86294);
+      expect(err.retryAfterSeconds).toBe(86294);
     });
   });
 });
